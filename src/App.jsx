@@ -201,7 +201,11 @@ function drawScene(canvas, game) {
   const rect = canvas.getBoundingClientRect();
   const cssWidth = Math.max(1, rect.width);
   const cssHeight = Math.max(1, rect.height);
-  const dprCap = cssWidth <= 540 ? 1.5 : 2;
+  // The game board is a canvas. A 1.5× cap made high-density Android screens
+  // upscale its pixels, which softened the grid and falling pieces. The static
+  // layer is cached and dynamic draws are demand-driven, so a 2.5× mobile cap
+  // restores sharp edges without forcing a full redraw every animation frame.
+  const dprCap = cssWidth <= 540 ? 2.5 : 2;
   const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
   const targetWidth = Math.round(cssWidth * dpr);
   const targetHeight = Math.round(cssHeight * dpr);
@@ -426,6 +430,7 @@ export function App() {
         ...metrics,
         averageMs: metrics.draws ? metrics.totalMs / metrics.draws : 0,
         devicePixelRatio: window.devicePixelRatio || 1,
+        renderScale: canvasRef.current ? canvasRef.current.width / Math.max(1, canvasRef.current.getBoundingClientRect().width) : 0,
       });
     };
     window.advanceTime = (milliseconds) => {
