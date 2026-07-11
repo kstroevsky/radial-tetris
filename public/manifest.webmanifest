@@ -1,0 +1,25 @@
+{
+  "name": "Radial Tetris",
+  "short_name": "Radial Tetris",
+  "description": "Orbit falling pieces around concentric rings and drive them into the core.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020506",
+  "theme_color": "#020506",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/radial-tetris-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/radial-tetris-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
