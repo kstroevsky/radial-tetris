@@ -612,6 +612,69 @@ export function App() {
               onPointerCancel={finishPointerOrbit}
             />
             <div className="frame-label frame-label-bottom">16θ / 10r / CORE ORIGIN 0,0</div>
+            <nav className="mobile-controller" aria-label="Mobile game controls" onContextMenu={(event) => event.preventDefault()}>
+              <div className="mobile-control-cluster mobile-orbit-controls">
+                <button
+                  id="mobile-orbit-left"
+                  className="mobile-control"
+                  type="button"
+                  aria-label="Orbit counterclockwise. Hold to repeat."
+                  disabled={hud.mode !== "playing"}
+                  onPointerDown={(event) => beginMobileControl(event, "left", { delay: 170, interval: 68 })}
+                  onPointerUp={endMobileControl}
+                  onPointerCancel={endMobileControl}
+                  onLostPointerCapture={endMobileControl}
+                ><span className="mobile-control-icon" aria-hidden="true">↺</span><span>Orbit</span></button>
+                <button
+                  id="mobile-orbit-right"
+                  className="mobile-control"
+                  type="button"
+                  aria-label="Orbit clockwise. Hold to repeat."
+                  disabled={hud.mode !== "playing"}
+                  onPointerDown={(event) => beginMobileControl(event, "right", { delay: 170, interval: 68 })}
+                  onPointerUp={endMobileControl}
+                  onPointerCancel={endMobileControl}
+                  onLostPointerCapture={endMobileControl}
+                ><span className="mobile-control-icon" aria-hidden="true">↻</span><span>Orbit</span></button>
+              </div>
+              <div className="mobile-control-cluster mobile-action-controls">
+                <button
+                  id="mobile-rotate"
+                  className="mobile-control mobile-rotate-control"
+                  type="button"
+                  aria-label="Rotate clockwise"
+                  disabled={hud.mode !== "playing"}
+                  onPointerDown={(event) => beginMobileControl(event, "rotate")}
+                  onPointerUp={endMobileControl}
+                  onPointerCancel={endMobileControl}
+                  onLostPointerCapture={endMobileControl}
+                ><span className="mobile-control-icon" aria-hidden="true">⟳</span><span>Rotate</span></button>
+                <div className="mobile-drop-stack">
+                  <button
+                    id="mobile-soft-drop"
+                    className="mobile-control mobile-soft-drop-control"
+                    type="button"
+                    aria-label="Nudge inward. Hold to repeat."
+                    disabled={hud.mode !== "playing"}
+                    onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
+                    onPointerUp={endMobileControl}
+                    onPointerCancel={endMobileControl}
+                    onLostPointerCapture={endMobileControl}
+                  ><span className="mobile-control-icon" aria-hidden="true">↓</span><span>Nudge</span></button>
+                  <button
+                    id="mobile-hard-drop"
+                    className="mobile-control mobile-hard-drop-control"
+                    type="button"
+                    aria-label="Hard drop inward"
+                    disabled={hud.mode !== "playing"}
+                    onPointerDown={(event) => beginMobileControl(event, "drop")}
+                    onPointerUp={endMobileControl}
+                    onPointerCancel={endMobileControl}
+                    onLostPointerCapture={endMobileControl}
+                  ><span className="mobile-control-icon" aria-hidden="true">⇣</span><span>Drop</span></button>
+                </div>
+              </div>
+            </nav>
             {isOverlayVisible && (
               <div className="game-overlay" role="dialog" aria-modal="true" aria-label={overlayCopy.title}>
                 <div className="overlay-card">
@@ -672,70 +735,6 @@ export function App() {
           <p className="control-legend"><span>← →</span> orbit<br /><span>↑ / Z</span> rotate<br /><span>↓</span> nudge inward<br /><span>SPACE</span> drive to core</p>
         </aside>
       </section>
-
-      <nav className="mobile-controller" aria-label="Mobile game controls" onContextMenu={(event) => event.preventDefault()}>
-        <div className="mobile-control-cluster mobile-orbit-controls">
-          <button
-            id="mobile-orbit-left"
-            className="mobile-control"
-            type="button"
-            aria-label="Orbit counterclockwise. Hold to repeat."
-            disabled={hud.mode !== "playing"}
-            onPointerDown={(event) => beginMobileControl(event, "left", { delay: 170, interval: 68 })}
-            onPointerUp={endMobileControl}
-            onPointerCancel={endMobileControl}
-            onLostPointerCapture={endMobileControl}
-          ><span className="mobile-control-icon" aria-hidden="true">←</span><span>Orbit</span></button>
-          <button
-            id="mobile-orbit-right"
-            className="mobile-control"
-            type="button"
-            aria-label="Orbit clockwise. Hold to repeat."
-            disabled={hud.mode !== "playing"}
-            onPointerDown={(event) => beginMobileControl(event, "right", { delay: 170, interval: 68 })}
-            onPointerUp={endMobileControl}
-            onPointerCancel={endMobileControl}
-            onLostPointerCapture={endMobileControl}
-          ><span className="mobile-control-icon" aria-hidden="true">→</span><span>Orbit</span></button>
-        </div>
-        <div className="mobile-control-cluster mobile-action-controls">
-          <button
-            id="mobile-rotate"
-            className="mobile-control mobile-rotate-control"
-            type="button"
-            aria-label="Rotate clockwise"
-            disabled={hud.mode !== "playing"}
-            onPointerDown={(event) => beginMobileControl(event, "rotate")}
-            onPointerUp={endMobileControl}
-            onPointerCancel={endMobileControl}
-            onLostPointerCapture={endMobileControl}
-          ><span className="mobile-control-icon" aria-hidden="true">⟳</span><span>Rotate</span></button>
-          <div className="mobile-drop-stack">
-            <button
-              id="mobile-soft-drop"
-              className="mobile-control mobile-soft-drop-control"
-              type="button"
-              aria-label="Nudge inward. Hold to repeat."
-              disabled={hud.mode !== "playing"}
-              onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
-              onPointerUp={endMobileControl}
-              onPointerCancel={endMobileControl}
-              onLostPointerCapture={endMobileControl}
-            ><span className="mobile-control-icon" aria-hidden="true">↓</span><span>Hold</span></button>
-            <button
-              id="mobile-hard-drop"
-              className="mobile-control mobile-hard-drop-control"
-              type="button"
-              aria-label="Hard drop inward"
-              disabled={hud.mode !== "playing"}
-              onPointerDown={(event) => beginMobileControl(event, "drop")}
-              onPointerUp={endMobileControl}
-              onPointerCancel={endMobileControl}
-              onLostPointerCapture={endMobileControl}
-            ><span className="mobile-control-icon" aria-hidden="true">⇣</span><span>Drop</span></button>
-          </div>
-        </div>
-      </nav>
 
       <footer className="footer-line"><span>EXPONENTIAL FIELD MAPPING</span><p>Close every angular segment to collapse a ring.</p><span>BUILD 01.00</span></footer>
     </main>
