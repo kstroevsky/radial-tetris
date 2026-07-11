@@ -21,7 +21,32 @@ export const PIECE_COLORS = {
   Z: "#ff647c",
 };
 
+export const DIFFICULTIES = {
+  easy: {
+    label: "Easy",
+    speedLabel: "Slow drop",
+    intervalMultiplier: 1.34,
+    minimumInterval: 0.18,
+  },
+  normal: {
+    label: "Normal",
+    speedLabel: "Standard drop",
+    intervalMultiplier: 1,
+    minimumInterval: 0.115,
+  },
+  hard: {
+    label: "Hard",
+    speedLabel: "Fast drop",
+    intervalMultiplier: 0.7,
+    minimumInterval: 0.075,
+  },
+};
+
 const TYPES = Object.keys(PIECES);
+
+function difficultyFor(game) {
+  return DIFFICULTIES[game.difficulty] ?? DIFFICULTIES.normal;
+}
 
 export function makeBoard() {
   return Array.from({ length: RINGS }, () => Array(SECTORS).fill(null));
@@ -48,6 +73,7 @@ export function createGame() {
     bag,
     score: 0,
     best: 0,
+    difficulty: "normal",
     ringsCleared: 0,
     level: 1,
     combo: -1,
@@ -61,8 +87,16 @@ export function createGame() {
 
 export function resetGame(game) {
   const best = Math.max(game.best || 0, game.score || 0);
-  Object.assign(game, createGame(), { best });
+  const difficulty = game.difficulty ?? "normal";
+  Object.assign(game, createGame(), { best, difficulty });
   startGame(game);
+}
+
+export function setDifficulty(game, difficulty) {
+  if (game.mode !== "ready" || !DIFFICULTIES[difficulty]) return false;
+  game.difficulty = difficulty;
+  game.message = `${DIFFICULTIES[difficulty].label} field selected`;
+  return true;
 }
 
 export function startGame(game) {
@@ -71,7 +105,7 @@ export function startGame(game) {
     return;
   }
   game.mode = "playing";
-  game.message = "Vector acquired";
+  game.message = `${difficultyFor(game).label} vector acquired`;
   if (!game.active) spawnPiece(game);
 }
 
@@ -285,7 +319,9 @@ export function updateGame(game, deltaSeconds) {
   }
 
   if (game.mode !== "playing") return visualChanged;
-  const interval = Math.max(0.115, 0.82 - (game.level - 1) * 0.07);
+  const difficulty = difficultyFor(game);
+  const levelInterval = Math.max(0.115, 0.82 - (game.level - 1) * 0.07);
+  const interval = Math.max(difficulty.minimumInterval, levelInterval * difficulty.intervalMultiplier);
   game.fallAccumulator += deltaSeconds;
   while (game.fallAccumulator >= interval && game.mode === "playing") {
     game.fallAccumulator -= interval;
@@ -310,6 +346,11 @@ export function gameSnapshot(game) {
     mode: game.mode,
     score: game.score,
     level: game.level,
+    difficulty: game.difficulty,
+    fallInterval: Math.max(
+      difficultyFor(game).minimumInterval,
+      Math.max(0.115, 0.82 - (game.level - 1) * 0.07) * difficultyFor(game).intervalMultiplier,
+    ),
     ringsCleared: game.ringsCleared,
     combo: Math.max(0, game.combo),
     active: game.active ? {

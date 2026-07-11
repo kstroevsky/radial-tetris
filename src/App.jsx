@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DIFFICULTIES,
   PIECE_COLORS,
   RINGS,
   SECTORS,
@@ -15,6 +16,7 @@ import {
   ringIntegrity,
   rotatePiece,
   sectorDegrees,
+  setDifficulty,
   startGame,
   stepInward,
   updateGame,
@@ -361,7 +363,8 @@ export function App() {
     if (changed) { syncHud(); redraw(); }
   }, [redraw, syncHud]);
 
-  const start = useCallback(() => {
+  const start = useCallback((difficulty = "normal") => {
+    if (gameRef.current.mode === "ready") setDifficulty(gameRef.current, difficulty);
     startGame(gameRef.current);
     syncHud();
     redraw();
@@ -511,7 +514,18 @@ export function App() {
           <span className="brand-index">Eˣ.01</span>
           <div><p>Radial Systems Lab</p><h1>RADIAL / TETRIS</h1></div>
         </div>
-        <div className="topbar-status"><span>POLAR FIELD</span><b>{hud.mode === "playing" ? "TRACKING" : hud.mode.toUpperCase()}</b></div>
+        <div className="topbar-status">
+          <span>POLAR FIELD</span><b>{hud.mode === "playing" ? "TRACKING" : hud.mode.toUpperCase()}</b>
+          <span className="difficulty-chip">{DIFFICULTIES[hud.difficulty]?.label ?? "Normal"}</span>
+          <button
+            className="mobile-pause-button"
+            type="button"
+            onClick={() => act("pause")}
+            disabled={hud.mode !== "playing"}
+          >
+            Pause
+          </button>
+        </div>
       </header>
 
       <section className="game-layout" aria-label="Radial Tetris game">
@@ -543,18 +557,40 @@ export function App() {
               <div className="game-overlay" role="dialog" aria-modal="true" aria-label={overlayCopy.title}>
                 <div className="overlay-card">
                   <span className="eyebrow">{overlayCopy.kicker}</span><h2>{overlayCopy.title}</h2><p>{overlayCopy.body}</p>
-                  <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>
-                  {hud.mode === "ready" && <small>Arrow keys / WASD · Space to drive inward</small>}
+                  {hud.mode === "ready" ? (
+                    <div className="difficulty-picker" role="group" aria-label="Choose block speed">
+                      <span className="eyebrow">Choose block speed</span>
+                      {Object.entries(DIFFICULTIES).map(([difficulty, config]) => (
+                        <button
+                          id={difficulty === "normal" ? "start-button" : undefined}
+                          className={`difficulty-button ${difficulty === "normal" ? "is-default" : ""}`}
+                          type="button"
+                          key={difficulty}
+                          onClick={() => start(difficulty)}
+                        >
+                          <strong>{config.label}</strong><span>{config.speedLabel}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>}
+                  {hud.mode === "ready" && <small>Choose a speed · Drag the field or use the control dock</small>}
                 </div>
               </div>
             )}
           </div>
-          <nav className="touch-controls" aria-label="Game controls">
-            <button type="button" onClick={() => act("left")} aria-label="Orbit counterclockwise">Orbit −</button>
-            <button type="button" onClick={() => act("rotate")} aria-label="Rotate clockwise">Rotate</button>
-            <button className="drop-button" type="button" onClick={() => act("drop")} aria-label="Hard drop inward">Drive core</button>
-            <button type="button" onClick={() => act("down")} aria-label="Soft drop inward">Nudge</button>
-            <button type="button" onClick={() => act("right")} aria-label="Orbit clockwise">Orbit +</button>
+          <nav className="touch-controls" aria-label="Fast game controls">
+            <button type="button" onClick={() => act("left")} aria-label="Orbit counterclockwise" disabled={hud.mode !== "playing"}>
+              <span className="control-icon" aria-hidden="true">↺</span><span>Orbit</span>
+            </button>
+            <button type="button" onClick={() => act("rotate")} aria-label="Rotate clockwise" disabled={hud.mode !== "playing"}>
+              <span className="control-icon" aria-hidden="true">⟳</span><span>Rotate</span>
+            </button>
+            <button className="drop-button" type="button" onClick={() => act("drop")} aria-label="Hard drop inward" disabled={hud.mode !== "playing"}>
+              <span className="control-icon" aria-hidden="true">⇣</span><span>Drop</span>
+            </button>
+            <button type="button" onClick={() => act("right")} aria-label="Orbit clockwise" disabled={hud.mode !== "playing"}>
+              <span className="control-icon" aria-hidden="true">↻</span><span>Orbit</span>
+            </button>
           </nav>
         </section>
 
