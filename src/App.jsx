@@ -324,6 +324,7 @@ export function App() {
   const pendingPointerSectorRef = useRef(null);
   const orbitFrameRef = useRef(0);
   const mobileRepeatsRef = useRef(new Map());
+  const mobilePullsRef = useRef(new Map());
   if (!gameRef.current) {
     gameRef.current = createGame();
     try {
@@ -408,18 +409,86 @@ export function App() {
     clearMobileRepeat(event.pointerId);
   }, [clearMobileRepeat]);
 
+  const clearMobilePull = useCallback((pointerId) => {
+    const pull = mobilePullsRef.current.get(pointerId);
+    if (!pull) return;
+    pull.target?.removeAttribute("data-pressed");
+    pull.target?.removeAttribute("data-pull-direction");
+    pull.target?.style.removeProperty("--pull-offset");
+    mobilePullsRef.current.delete(pointerId);
+  }, []);
+
+  const clearAllMobilePulls = useCallback(() => {
+    for (const pointerId of mobilePullsRef.current.keys()) clearMobilePull(pointerId);
+  }, [clearMobilePull]);
+
+  const beginMobilePull = useCallback((event, downAction, upAction) => {
+    if (gameRef.current.mode !== "playing") return;
+    event.preventDefault();
+    const target = event.currentTarget;
+    try {
+      target.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Synthetic events and a few embedded browsers do not expose an active pointer to capture.
+    }
+    target.dataset.pressed = "true";
+    target.dataset.pullDirection = "neutral";
+    target.style.setProperty("--pull-offset", "0px");
+    mobilePullsRef.current.set(event.pointerId, {
+      target,
+      downAction,
+      upAction,
+      lastY: event.clientY,
+      originY: event.clientY,
+    });
+  }, []);
+
+  const moveMobilePull = useCallback((event) => {
+    const pull = mobilePullsRef.current.get(event.pointerId);
+    if (!pull || gameRef.current.mode !== "playing") return;
+    event.preventDefault();
+    const offset = Math.max(-28, Math.min(28, event.clientY - pull.originY));
+    pull.target.style.setProperty("--pull-offset", `${offset}px`);
+    const distance = event.clientY - pull.lastY;
+    const stepSize = 22;
+    const steps = Math.min(4, Math.floor(Math.abs(distance) / stepSize));
+    if (!steps) return;
+    const direction = Math.sign(distance);
+    const action = direction > 0 ? pull.downAction : pull.upAction;
+    for (let step = 0; step < steps; step += 1) act(action);
+    pull.lastY += direction * steps * stepSize;
+    pull.target.dataset.pullDirection = direction > 0 ? "down" : "up";
+    if (navigator.vibrate) navigator.vibrate(5);
+  }, [act]);
+
+  const endMobilePull = useCallback((event) => {
+    clearMobilePull(event.pointerId);
+  }, [clearMobilePull]);
+
+  const finishMobilePull = useCallback((event) => {
+    moveMobilePull(event);
+    endMobilePull(event);
+  }, [endMobilePull, moveMobilePull]);
+
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") clearAllMobileRepeats();
+      if (document.visibilityState !== "visible") {
+        clearAllMobileRepeats();
+        clearAllMobilePulls();
+      }
     };
-    window.addEventListener("blur", clearAllMobileRepeats);
+    const clearMobileInputs = () => {
+      clearAllMobileRepeats();
+      clearAllMobilePulls();
+    };
+    window.addEventListener("blur", clearMobileInputs);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.removeEventListener("blur", clearAllMobileRepeats);
+      window.removeEventListener("blur", clearMobileInputs);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      clearAllMobileRepeats();
+      clearMobileInputs();
     };
-  }, [clearAllMobileRepeats]);
+  }, [clearAllMobilePulls, clearAllMobileRepeats]);
 
   const start = useCallback((difficulty = "normal") => {
     if (gameRef.current.mode === "ready") setDifficulty(gameRef.current, difficulty);
@@ -576,14 +645,6 @@ export function App() {
         <div className="topbar-status">
           <span>POLAR FIELD</span><b>{hud.mode === "playing" ? "TRACKING" : hud.mode.toUpperCase()}</b>
           <span className="difficulty-chip">{DIFFICULTIES[hud.difficulty]?.label ?? "Normal"}</span>
-          <button
-            className="mobile-pause-button"
-            type="button"
-            onClick={() => act("pause")}
-            disabled={hud.mode !== "playing"}
-          >
-            Pause
-          </button>
         </div>
       </header>
 
@@ -613,66 +674,42 @@ export function App() {
             />
             <div className="frame-label frame-label-bottom">16θ / 10r / CORE ORIGIN 0,0</div>
             <nav className="mobile-controller" aria-label="Mobile game controls" onContextMenu={(event) => event.preventDefault()}>
-              <div className="mobile-control-cluster mobile-orbit-controls">
-                <button
-                  id="mobile-orbit-left"
-                  className="mobile-control"
-                  type="button"
-                  aria-label="Orbit counterclockwise. Hold to repeat."
-                  disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "left", { delay: 170, interval: 68 })}
-                  onPointerUp={endMobileControl}
-                  onPointerCancel={endMobileControl}
-                  onLostPointerCapture={endMobileControl}
-                ><span className="mobile-control-icon" aria-hidden="true">↺</span><span>Orbit</span></button>
-                <button
-                  id="mobile-orbit-right"
-                  className="mobile-control"
-                  type="button"
-                  aria-label="Orbit clockwise. Hold to repeat."
-                  disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "right", { delay: 170, interval: 68 })}
-                  onPointerUp={endMobileControl}
-                  onPointerCancel={endMobileControl}
-                  onLostPointerCapture={endMobileControl}
-                ><span className="mobile-control-icon" aria-hidden="true">↻</span><span>Orbit</span></button>
-              </div>
+              <button
+                id="mobile-spin-pull"
+                className="mobile-pull-control mobile-spin-pull"
+                type="button"
+                aria-label="Piece rotation pull control. Pull down to rotate clockwise or up to rotate counterclockwise."
+                disabled={hud.mode !== "playing"}
+                onPointerDown={(event) => beginMobilePull(event, "rotate", "counterRotate")}
+                onPointerMove={moveMobilePull}
+                onPointerUp={finishMobilePull}
+                onPointerCancel={endMobilePull}
+                onLostPointerCapture={endMobilePull}
+              ><span className="mobile-pull-title">Spin</span><span className="mobile-pull-top">↑ CCW</span><span className="mobile-pull-track" aria-hidden="true"><span className="mobile-pull-grip">↕</span></span><span className="mobile-pull-bottom">CW ↓</span></button>
+              <button
+                id="mobile-orbit-pull"
+                className="mobile-pull-control mobile-orbit-pull"
+                type="button"
+                aria-label="Orbit pull control. Pull down to move clockwise or up to move counterclockwise."
+                disabled={hud.mode !== "playing"}
+                onPointerDown={(event) => beginMobilePull(event, "right", "left")}
+                onPointerMove={moveMobilePull}
+                onPointerUp={finishMobilePull}
+                onPointerCancel={endMobilePull}
+                onLostPointerCapture={endMobilePull}
+              ><span className="mobile-pull-title">Orbit</span><span className="mobile-pull-top">↑ CCW</span><span className="mobile-pull-track" aria-hidden="true"><span className="mobile-pull-grip">↕</span></span><span className="mobile-pull-bottom">CW ↓</span></button>
               <div className="mobile-control-cluster mobile-action-controls">
                 <button
-                  id="mobile-rotate"
-                  className="mobile-control mobile-rotate-control"
+                  id="mobile-nudge"
+                  className="mobile-control mobile-nudge-control"
                   type="button"
-                  aria-label="Rotate clockwise"
+                  aria-label="Nudge inward. Hold to repeat."
                   disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "rotate")}
+                  onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
                   onPointerUp={endMobileControl}
                   onPointerCancel={endMobileControl}
                   onLostPointerCapture={endMobileControl}
-                ><span className="mobile-control-icon" aria-hidden="true">⟳</span><span>Rotate</span></button>
-                <div className="mobile-drop-stack">
-                  <button
-                    id="mobile-soft-drop"
-                    className="mobile-control mobile-soft-drop-control"
-                    type="button"
-                    aria-label="Nudge inward. Hold to repeat."
-                    disabled={hud.mode !== "playing"}
-                    onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
-                    onPointerUp={endMobileControl}
-                    onPointerCancel={endMobileControl}
-                    onLostPointerCapture={endMobileControl}
-                  ><span className="mobile-control-icon" aria-hidden="true">↓</span><span>Nudge</span></button>
-                  <button
-                    id="mobile-hard-drop"
-                    className="mobile-control mobile-hard-drop-control"
-                    type="button"
-                    aria-label="Hard drop inward"
-                    disabled={hud.mode !== "playing"}
-                    onPointerDown={(event) => beginMobileControl(event, "drop")}
-                    onPointerUp={endMobileControl}
-                    onPointerCancel={endMobileControl}
-                    onLostPointerCapture={endMobileControl}
-                  ><span className="mobile-control-icon" aria-hidden="true">⇣</span><span>Drop</span></button>
-                </div>
+                ><span className="mobile-control-icon" aria-hidden="true">↓</span><span>Nudge</span></button>
               </div>
             </nav>
             {isOverlayVisible && (
@@ -697,7 +734,7 @@ export function App() {
                   ) : <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>}
                   {hud.mode === "ready" && <>
                     <small className="desktop-start-hint">Choose a speed · Drag the field or use the control dock</small>
-                    <small className="mobile-start-hint">Hold arrows to orbit · Hold ↓ to nudge · Tap ⇣ to drop</small>
+                    <small className="mobile-start-hint">Pull side controls ↑ / ↓ · Hold nudge to drive inward</small>
                   </>}
                 </div>
               </div>
@@ -735,6 +772,15 @@ export function App() {
           <p className="control-legend"><span>← →</span> orbit<br /><span>↑ / Z</span> rotate<br /><span>↓</span> nudge inward<br /><span>SPACE</span> drive to core</p>
         </aside>
       </section>
+
+      <nav className={`mobile-system-controls ${isOverlayVisible ? "is-obscured" : ""}`} aria-label="Mobile game system controls">
+        <button id="mobile-new-game" type="button" onClick={() => act("restart")} disabled={hud.mode !== "playing" && hud.mode !== "paused"}>
+          <span aria-hidden="true">↻</span> New game
+        </button>
+        <button id="mobile-pause" type="button" onClick={() => act("pause")} disabled={hud.mode !== "playing" && hud.mode !== "paused"}>
+          <span aria-hidden="true">Ⅱ</span> {hud.mode === "paused" ? "Resume" : "Pause"}
+        </button>
+      </nav>
 
       <footer className="footer-line"><span>EXPONENTIAL FIELD MAPPING</span><p>Close every angular segment to collapse a ring.</p><span>BUILD 01.00</span></footer>
     </main>
