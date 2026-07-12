@@ -8,7 +8,7 @@ When implementing from a selected generated mock, treat that image as the source
 
 ## Durable design decisions
 
-- Favor a nearly full-width polar field on mobile, with spare margins kept minimal and the canvas raised slightly above the lower controls.
+- Favor a near-edge polar field on mobile, with the lower controls reaching toward the screen borders and only enough inset to preserve labels.
 - Keep direct drag on the circle as the primary orbit gesture. Mobile also has an understated bottom orbit rail with arrow ends as a secondary option.
-- Keep the left Spin capsule two-ended and light its active pole during a tap or pull. Keep Nudge visually distinct and single-ended, with a strong press/hold glow.
+- Keep the left Spin capsule two-ended and light its active pole during a tap or pull. Keep Nudge visually distinct and single-ended, with directional gradient press/hold feedback instead of filling the whole control.
 - Prefer a fullscreen game shell on normal-size viewports; preserve overflow only where compressing the play surface would harm usability.
