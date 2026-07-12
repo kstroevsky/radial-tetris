@@ -13,7 +13,6 @@ Original prompt: I have an idea about radial Tetris. Can you implement it? Use R
 - Reworking the mobile interface into a playfield-centered layout: telemetry is above the board, the circle sits lower around screen center, orbit controls are beside the circle, and rotate/nudge/drop form a compact row beneath it.
 - Completed the playfield-centered mobile redesign. At 390 × 844 / DPR 3, score is a 67 px top strip, the board frame is 560 px tall, the circle center aligns at y≈419, orbit buttons are 56 × 76 px alongside the circle, and the action row is 58 px tall beneath it. Hold-orbit, rotate, hold-nudge, and hard drop all work with no browser errors; desktop retains its original dock. A 320 × 568 fixture keeps a 246 px circle and every control on screen. Final build and game-loop QA pass.
 - Deployed the playfield-centered layout to `https://radial-tetris.pages.dev` (deployment `d924efa3.radial-tetris.pages.dev`). Production serves `index-BleA1AmV.js` / `index-CqOqrZiX.css`; a live 390 × 844 / DPR 3 check confirms score above board, circle center y≈419, side orbit buttons, compact action row, start flow, and zero console errors.
-
 ## Progress
 
 - 2026-07-10: Inspected the supplied exponential-map visual reference and defined a 16-sector, 10-ring inward-falling Tetris ruleset.
@@ -38,3 +37,5 @@ Original prompt: I have an idea about radial Tetris. Can you implement it? Use R
 ## TODO
 
 - Optional follow-up only: sound design and physical-device battery/thermal profiling.
+
+- Pull-controller follow-up: the GitHub `main` draft replaces the side buttons with left Spin and right Orbit vertical pull tracks (down = clockwise, up = counterclockwise), keeps a centered hold-to-nudge button, and moves New Game/Pause to the bottom. Corrected a CSS specificity regression that had hidden those mobile controls despite their code being present; local mobile, compact-screen, desktop, and game-loop QA pass.

@@ -91,7 +91,8 @@ button { font: inherit; }
 
 .topbar-status span { color: var(--muted); font-size: 9px; }
 .topbar-status b { color: var(--cyan); font-size: 10px; }
-.difficulty-chip, .mobile-pause-button, .mobile-controller, .mobile-system-controls, .mobile-start-hint { display: none !important; }
+.difficulty-chip, .mobile-pause-button, .mobile-controller, .mobile-system-controls { display: none; }
+.mobile-start-hint { display: none !important; }
 
 .game-layout {
   width: min(100%, 1480px);
