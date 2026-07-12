@@ -435,10 +435,13 @@ export function App() {
     target.dataset.pressed = "true";
     target.dataset.pullDirection = "neutral";
     target.style.setProperty("--pull-offset", "0px");
+    const poleTarget = event.target?.closest?.("[data-spin-pole-action]");
     mobilePullsRef.current.set(event.pointerId, {
       target,
       downAction,
       upAction,
+      tapAction: poleTarget?.dataset.spinPoleAction ?? null,
+      hasPulled: false,
       axis,
       lastX: event.clientX,
       lastY: event.clientY,
@@ -462,6 +465,7 @@ export function App() {
     const direction = Math.sign(distance);
     const action = direction > 0 ? pull.downAction : pull.upAction;
     for (let step = 0; step < steps; step += 1) act(action);
+    pull.hasPulled = true;
     pull.lastX += pull.axis.x * direction * steps * stepSize;
     pull.lastY += pull.axis.y * direction * steps * stepSize;
     pull.target.dataset.pullDirection = direction > 0 ? "down" : "up";
@@ -474,8 +478,13 @@ export function App() {
 
   const finishMobilePull = useCallback((event) => {
     moveMobilePull(event);
+    const pull = mobilePullsRef.current.get(event.pointerId);
+    if (pull?.tapAction && !pull.hasPulled && gameRef.current.mode === "playing") {
+      act(pull.tapAction);
+      if (navigator.vibrate) navigator.vibrate(6);
+    }
     endMobilePull(event);
-  }, [endMobilePull, moveMobilePull]);
+  }, [act, endMobilePull, moveMobilePull]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -685,7 +694,7 @@ export function App() {
                 id="mobile-spin-pull"
                 className="mobile-polar-control mobile-spin-pull"
                 type="button"
-                aria-label="Piece rotation pull control. Pull down and right to rotate clockwise or up and left to rotate counterclockwise."
+                aria-label="Piece rotation control. Tap the top pole to rotate counterclockwise, the bottom pole to rotate clockwise, or pull down and right for clockwise and up and left for counterclockwise."
                 disabled={hud.mode !== "playing"}
                 onPointerDown={(event) => beginMobilePull(event, "rotate", "counterRotate", MOBILE_DIAGONAL_PULL_AXIS)}
                 onPointerMove={moveMobilePull}
@@ -693,9 +702,9 @@ export function App() {
                 onPointerCancel={endMobilePull}
                 onLostPointerCapture={endMobilePull}
               >
-                <span className="mobile-polar-end mobile-polar-up" aria-hidden="true">↺</span>
+                <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true">↺</span>
                 <span className="mobile-polar-core"><span className="mobile-polar-label">Spin</span><span className="mobile-polar-drag" aria-hidden="true">↕</span></span>
-                <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">⟳</span>
+                <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true">⟳</span>
               </button>
               <button
                 id="mobile-nudge"
