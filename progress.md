@@ -13,3 +13,28 @@ Original prompt: I have an idea about radial Tetris. Can you implement it? Use R
 - Reworking the mobile interface into a playfield-centered layout: telemetry is above the board, the circle sits lower around screen center, orbit controls are beside the circle, and rotate/nudge/drop form a compact row beneath it.
 - Completed the playfield-centered mobile redesign. At 390 × 844 / DPR 3, score is a 67 px top strip, the board frame is 560 px tall, the circle center aligns at y≈419, orbit buttons are 56 × 76 px alongside the circle, and the action row is 58 px tall beneath it. Hold-orbit, rotate, hold-nudge, and hard drop all work with no browser errors; desktop retains its original dock. A 320 × 568 fixture keeps a 246 px circle and every control on screen. Final build and game-loop QA pass.
 - Deployed the playfield-centered layout to `https://radial-tetris.pages.dev` (deployment `d924efa3.radial-tetris.pages.dev`). Production serves `index-BleA1AmV.js` / `index-CqOqrZiX.css`; a live 390 × 844 / DPR 3 check confirms score above board, circle center y≈419, side orbit buttons, compact action row, start flow, and zero console errors.
+
+## Progress
+
+- 2026-07-10: Inspected the supplied exponential-map visual reference and defined a 16-sector, 10-ring inward-falling Tetris ruleset.
+- 2026-07-10: Scaffolded the React/Vite prototype and installed dependencies.
+- 2026-07-10: Added the deterministic radial game engine with seven-bag pieces, orbiting, rotation with kicks, soft/hard drop, collision, ghost landing, ring clears, combos, levels, score, particles, pause, reset, and text-state output support.
+- 2026-07-10: Added the responsive React/canvas interface, mathematical polar-grid art direction, HUD, overlays, keyboard/pointer/touch controls, fullscreen, and accessibility labels.
+- 2026-07-10: Production build passed. Deterministic engine smoke tests passed for spawn, sector wrapping/orbit, rotation, drop, pause, and complete-ring collapse.
+- 2026-07-10: Browser verification is temporarily blocked because the configured in-app browser rejected local preview navigation. `design-qa.md` records the blocking evidence.
+- 2026-07-11: User approved the bundled local Playwright client. Headless canvas-only captures can show partial GPU frames; a headed capture confirmed the rendered polar field is complete. Added a no-request favicon to remove the only browser console error before retesting.
+- 2026-07-11: The partial-frame artifact also reproduced intermittently in headed capture. Changed the canvas renderer to compose offscreen and atomically present completed frames, preventing capture/render tearing.
+- 2026-07-11: Automated canvas readback still caught incomplete GPU tiles after atomic blitting. Forced the render and presentation contexts onto the readback-safe software path and added a one-pixel flush after presentation.
+- 2026-07-11: Isolated the issue with an empty-board baseline: the visible canvas retained a live reference to the offscreen source while the next frame mutated it. Switched to alternating presentation buffers so the displayed source stays immutable until replaced.
+- 2026-07-11: Alternating buffers exposed that Chromium still retained live GPU source tiles. Presentation now uses a completed pixel snapshot (`getImageData` → `putImageData`), making every visible frame deterministic and capture-safe.
+- 2026-07-11: Removed alternating source buffers after the pixel-copy boundary made them unnecessary; this also eliminated buffer-specific context state as a source of alternating incomplete frames.
+- 2026-07-11: Whole-page Playwright captures verified the real ready and gameplay layouts are complete. Removed the cosmetic 60fps pulse and switched the scene to event-driven redraws (movement, gravity, clears, resize), eliminating continuous canvas mutation while also reducing CPU/GPU work.
+- 2026-07-11: Updated the deterministic `advanceTime` hook to follow the same event-driven rule, avoiding redundant redraws when the scripted clock advances without changing visible state.
+- 2026-07-11: Completed browser interaction coverage: pointer orbit, keyboard rotation/nudge/drop, pause/resume, fullscreen/Escape, restart, responsive 390px layout, and console checks all passed. Final headed gameplay canvas and whole-page screenshots were visually inspected.
+- 2026-07-11: Compared the reference and gameplay capture in a combined image. Design QA passed with no actionable P0/P1/P2 findings. Final production build and engine smoke test passed.
+- 2026-07-11: Added PWA support: standalone manifest, real 192px/512px install icons, production-only service worker, offline app-shell fallback, and persistent local high score.
+- 2026-07-11: Completed mobile performance pass. Removed full-canvas readback/copy, cached static geometry, reduced phone pixel density, coalesced pointer moves, made HUD updates event-driven, and removed idle particle allocations. See `performance-review.md` for before/after evidence.
+
+## TODO
+
+- Optional follow-up only: sound design and physical-device battery/thermal profiling.
