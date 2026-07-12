@@ -23,6 +23,7 @@ import {
 } from "./gameEngine.js";
 
 const TAU = Math.PI * 2;
+const MOBILE_DIAGONAL_PULL_AXIS = Object.freeze({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
 const staticLayers = new WeakMap();
 const renderMetrics = new WeakMap();
 const BEST_SCORE_KEY = "radial-tetris-best-score";
@@ -422,7 +423,7 @@ export function App() {
     for (const pointerId of mobilePullsRef.current.keys()) clearMobilePull(pointerId);
   }, [clearMobilePull]);
 
-  const beginMobilePull = useCallback((event, downAction, upAction) => {
+  const beginMobilePull = useCallback((event, downAction, upAction, axis = { x: 0, y: 1 }) => {
     if (gameRef.current.mode !== "playing") return;
     event.preventDefault();
     const target = event.currentTarget;
@@ -438,7 +439,10 @@ export function App() {
       target,
       downAction,
       upAction,
+      axis,
+      lastX: event.clientX,
       lastY: event.clientY,
+      originX: event.clientX,
       originY: event.clientY,
     });
   }, []);
@@ -447,16 +451,19 @@ export function App() {
     const pull = mobilePullsRef.current.get(event.pointerId);
     if (!pull || gameRef.current.mode !== "playing") return;
     event.preventDefault();
-    const offset = Math.max(-28, Math.min(28, event.clientY - pull.originY));
+    const offset = Math.max(-28, Math.min(28,
+      (event.clientX - pull.originX) * pull.axis.x + (event.clientY - pull.originY) * pull.axis.y,
+    ));
     pull.target.style.setProperty("--pull-offset", `${offset}px`);
-    const distance = event.clientY - pull.lastY;
+    const distance = (event.clientX - pull.lastX) * pull.axis.x + (event.clientY - pull.lastY) * pull.axis.y;
     const stepSize = 22;
     const steps = Math.min(4, Math.floor(Math.abs(distance) / stepSize));
     if (!steps) return;
     const direction = Math.sign(distance);
     const action = direction > 0 ? pull.downAction : pull.upAction;
     for (let step = 0; step < steps; step += 1) act(action);
-    pull.lastY += direction * steps * stepSize;
+    pull.lastX += pull.axis.x * direction * steps * stepSize;
+    pull.lastY += pull.axis.y * direction * steps * stepSize;
     pull.target.dataset.pullDirection = direction > 0 ? "down" : "up";
     if (navigator.vibrate) navigator.vibrate(5);
   }, [act]);
@@ -676,41 +683,35 @@ export function App() {
             <nav className="mobile-controller" aria-label="Mobile game controls" onContextMenu={(event) => event.preventDefault()}>
               <button
                 id="mobile-spin-pull"
-                className="mobile-pull-control mobile-spin-pull"
+                className="mobile-polar-control mobile-spin-pull"
                 type="button"
-                aria-label="Piece rotation pull control. Pull down to rotate clockwise or up to rotate counterclockwise."
+                aria-label="Piece rotation pull control. Pull down and right to rotate clockwise or up and left to rotate counterclockwise."
                 disabled={hud.mode !== "playing"}
-                onPointerDown={(event) => beginMobilePull(event, "rotate", "counterRotate")}
+                onPointerDown={(event) => beginMobilePull(event, "rotate", "counterRotate", MOBILE_DIAGONAL_PULL_AXIS)}
                 onPointerMove={moveMobilePull}
                 onPointerUp={finishMobilePull}
                 onPointerCancel={endMobilePull}
                 onLostPointerCapture={endMobilePull}
-              ><span className="mobile-pull-title">Spin</span><span className="mobile-pull-top">↑ CCW</span><span className="mobile-pull-track" aria-hidden="true"><span className="mobile-pull-grip">↕</span></span><span className="mobile-pull-bottom">CW ↓</span></button>
+              >
+                <span className="mobile-polar-end mobile-polar-up" aria-hidden="true">↺</span>
+                <span className="mobile-polar-core"><span className="mobile-polar-label">Spin</span><span className="mobile-polar-drag" aria-hidden="true">↕</span></span>
+                <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">⟳</span>
+              </button>
               <button
-                id="mobile-orbit-pull"
-                className="mobile-pull-control mobile-orbit-pull"
+                id="mobile-nudge"
+                className="mobile-polar-control mobile-nudge-control"
                 type="button"
-                aria-label="Orbit pull control. Pull down to move clockwise or up to move counterclockwise."
+                aria-label="Nudge inward. Hold to repeat."
                 disabled={hud.mode !== "playing"}
-                onPointerDown={(event) => beginMobilePull(event, "right", "left")}
-                onPointerMove={moveMobilePull}
-                onPointerUp={finishMobilePull}
-                onPointerCancel={endMobilePull}
-                onLostPointerCapture={endMobilePull}
-              ><span className="mobile-pull-title">Orbit</span><span className="mobile-pull-top">↑ CCW</span><span className="mobile-pull-track" aria-hidden="true"><span className="mobile-pull-grip">↕</span></span><span className="mobile-pull-bottom">CW ↓</span></button>
-              <div className="mobile-control-cluster mobile-action-controls">
-                <button
-                  id="mobile-nudge"
-                  className="mobile-control mobile-nudge-control"
-                  type="button"
-                  aria-label="Nudge inward. Hold to repeat."
-                  disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
-                  onPointerUp={endMobileControl}
-                  onPointerCancel={endMobileControl}
-                  onLostPointerCapture={endMobileControl}
-                ><span className="mobile-control-icon" aria-hidden="true">↓</span><span>Nudge</span></button>
-              </div>
+                onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
+                onPointerUp={endMobileControl}
+                onPointerCancel={endMobileControl}
+                onLostPointerCapture={endMobileControl}
+              >
+                <span className="mobile-polar-end mobile-polar-up" aria-hidden="true">·</span>
+                <span className="mobile-polar-core"><span className="mobile-polar-label">Nudge</span><span className="mobile-polar-drag" aria-hidden="true">↓</span></span>
+                <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
+              </button>
             </nav>
             {isOverlayVisible && (
               <div className="game-overlay" role="dialog" aria-modal="true" aria-label={overlayCopy.title}>
@@ -734,7 +735,7 @@ export function App() {
                   ) : <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>}
                   {hud.mode === "ready" && <>
                     <small className="desktop-start-hint">Choose a speed · Drag the field or use the control dock</small>
-                    <small className="mobile-start-hint">Pull side controls ↑ / ↓ · Hold nudge to drive inward</small>
+                    <small className="mobile-start-hint">Drag the circle to orbit · Pull spin ↙ / ↗ · Hold nudge</small>
                   </>}
                 </div>
               </div>
