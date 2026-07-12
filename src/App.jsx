@@ -88,7 +88,7 @@ function drawCell(ctx, geometry, cell, color, options = {}) {
 function createGeometry(cssWidth, cssHeight) {
   const size = Math.min(cssWidth, cssHeight);
   const coreRadius = Math.max(19, size * 0.035);
-  const outerRadius = size * 0.425;
+  const outerRadius = size * 0.45;
   return {
     cx: cssWidth / 2,
     cy: cssHeight / 2,
@@ -161,9 +161,10 @@ function drawStaticField(ctx, geometry, cssWidth, cssHeight) {
   ctx.font = `${Math.max(8, size * 0.013)}px ui-monospace, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  const angleLabelRadius = Math.min(outerRadius + 20, size / 2 - 12);
   for (let sector = 0; sector < SECTORS; sector += 2) {
     const angle = sector * TAU / SECTORS - Math.PI / 2;
-    const [x, y] = polarPoint(cx, cy, outerRadius + 32, angle);
+    const [x, y] = polarPoint(cx, cy, angleLabelRadius, angle);
     ctx.fillText(`${sector * (360 / SECTORS)}°`, x, y);
   }
   ctx.restore();
@@ -717,7 +718,6 @@ export function App() {
                 onPointerCancel={endMobileControl}
                 onLostPointerCapture={endMobileControl}
               >
-                <span className="mobile-polar-end mobile-polar-up" aria-hidden="true">·</span>
                 <span className="mobile-polar-core"><span className="mobile-polar-label">Nudge</span><span className="mobile-polar-drag" aria-hidden="true">↓</span></span>
                 <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
               </button>
