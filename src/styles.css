@@ -91,7 +91,7 @@ button { font: inherit; }
 
 .topbar-status span { color: var(--muted); font-size: 9px; }
 .topbar-status b { color: var(--cyan); font-size: 10px; }
-.difficulty-chip, .mobile-pause-button, .mobile-controller, .mobile-system-controls { display: none; }
+.difficulty-chip, .mobile-pause-button, .mobile-controller, .mobile-system-controls, .mobile-orbit-rail { display: none; }
 .mobile-start-hint { display: none !important; }
 
 .game-layout {
@@ -450,6 +450,50 @@ kbd { color: #57757a; font: inherit; }
     user-select: none;
     touch-action: none;
   }
+  .mobile-orbit-rail {
+    position: absolute;
+    z-index: 1;
+    left: 50%;
+    bottom: 44px;
+    width: min(236px, calc(100% - 126px));
+    height: 27px;
+    display: grid;
+    grid-template-columns: 30px 1fr 30px;
+    align-items: center;
+    transform: translateX(-50%);
+    opacity: 0.58;
+    pointer-events: auto;
+  }
+  .mobile-orbit-rail::before {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: 50%;
+    border-top: 1px solid rgba(77, 220, 232, 0.32);
+    box-shadow: 0 0 8px rgba(77, 220, 232, 0.1);
+  }
+  .mobile-orbit-rail button {
+    position: relative;
+    z-index: 1;
+    width: 30px;
+    height: 27px;
+    padding: 0;
+    border: 0;
+    color: rgba(125, 191, 198, 0.84);
+    background: rgba(2, 10, 12, 0.3);
+    cursor: pointer;
+    font: 400 28px/0.75 Georgia, serif;
+    touch-action: none;
+    transition: color 100ms ease, background 100ms ease, text-shadow 100ms ease;
+  }
+  .mobile-orbit-rail button:last-child { grid-column: 3; }
+  .mobile-orbit-rail button[data-pressed="true"], .mobile-orbit-rail button:active {
+    color: #efffb1;
+    background: rgba(22, 39, 16, 0.8);
+    text-shadow: 0 0 12px rgba(215, 243, 74, 0.88);
+  }
+  .mobile-orbit-rail button:disabled { color: rgba(75, 102, 107, 0.52); cursor: default; }
   .mobile-polar-control {
     position: absolute;
     top: 71%;
@@ -510,22 +554,35 @@ kbd { color: #57757a; font: inherit; }
   .mobile-spin-pull .mobile-polar-label, .mobile-spin-pull .mobile-polar-drag { transform: rotate(45deg); }
   .mobile-nudge-control .mobile-polar-label, .mobile-nudge-control .mobile-polar-drag { transform: rotate(-45deg); }
   .mobile-nudge-control .mobile-polar-core { min-height: 0; border-top: 0; }
-  .mobile-spin-pull[data-pull-direction="down"] { border-color: var(--lime); background: rgba(16, 26, 11, 0.94); }
+  .mobile-spin-pull[data-pull-direction="down"], .mobile-spin-pull[data-pressed-pole="down"] { border-color: var(--lime); background: rgba(16, 26, 11, 0.94); }
   .mobile-spin-pull[data-pull-direction="down"] .mobile-polar-down,
+  .mobile-spin-pull[data-pressed-pole="down"] .mobile-polar-down,
   .mobile-nudge-control[data-pressed="true"] .mobile-polar-down {
     color: #efffb1;
     border-color: var(--lime);
     background: rgba(33, 45, 15, 0.98);
     box-shadow: 0 0 14px rgba(215, 243, 74, 0.32);
   }
-  .mobile-spin-pull[data-pull-direction="up"] { border-color: rgba(77, 220, 232, 0.9); background: rgba(5, 24, 27, 0.96); }
+  .mobile-spin-pull[data-pull-direction="up"], .mobile-spin-pull[data-pressed-pole="up"] { border-color: rgba(77, 220, 232, 0.9); background: rgba(5, 24, 27, 0.96); }
   .mobile-spin-pull[data-pull-direction="up"] .mobile-polar-up {
     color: #d7faff;
     border-color: var(--cyan);
     background: rgba(9, 36, 40, 0.98);
     box-shadow: 0 0 14px rgba(77, 220, 232, 0.32);
   }
+  .mobile-spin-pull[data-pressed-pole="up"] .mobile-polar-up {
+    color: #d7faff;
+    border-color: var(--cyan);
+    background: rgba(9, 36, 40, 0.98);
+    box-shadow: 0 0 14px rgba(77, 220, 232, 0.32);
+  }
+  .mobile-nudge-control[data-pressed="true"] .mobile-polar-core { color: #efffb1; border-bottom-color: rgba(215, 243, 74, 0.56); }
   .mobile-polar-control[data-pressed="true"] { box-shadow: 0 0 0 1px rgba(77, 220, 232, 0.28), 0 8px 20px rgba(0, 0, 0, 0.36); }
+  .mobile-nudge-control[data-pressed="true"] {
+    border-color: var(--lime);
+    background: rgba(16, 26, 11, 0.94);
+    box-shadow: 0 0 0 1px rgba(215, 243, 74, 0.34), 0 0 18px rgba(215, 243, 74, 0.2), 0 8px 20px rgba(0, 0, 0, 0.36);
+  }
   .mobile-polar-control:disabled { cursor: default; color: #4b666b; border-color: rgba(75, 157, 171, 0.2); }
   .mobile-polar-control:disabled .mobile-polar-core, .mobile-polar-control:disabled .mobile-polar-end { color: #416369; border-color: rgba(75, 157, 171, 0.16); }
   .frame-label-bottom { bottom: 16px; }
@@ -592,6 +649,7 @@ kbd { color: #57757a; font: inherit; }
 @media (max-height: 650px) and (max-width: 700px) {
   .frame-label-bottom { display: none; }
   .mobile-polar-control { top: 70%; }
+  .mobile-orbit-rail { display: none; }
 }
 
 @media (max-width: 700px) and (min-height: 650px) {

@@ -88,7 +88,7 @@ function drawCell(ctx, geometry, cell, color, options = {}) {
 function createGeometry(cssWidth, cssHeight) {
   const size = Math.min(cssWidth, cssHeight);
   const coreRadius = Math.max(19, size * 0.035);
-  const outerRadius = size * 0.45;
+  const outerRadius = size * 0.46;
   return {
     cx: cssWidth / 2,
     cy: cssHeight / 2,
@@ -415,6 +415,7 @@ export function App() {
     const pull = mobilePullsRef.current.get(pointerId);
     if (!pull) return;
     pull.target?.removeAttribute("data-pressed");
+    pull.target?.removeAttribute("data-pressed-pole");
     pull.target?.removeAttribute("data-pull-direction");
     pull.target?.style.removeProperty("--pull-offset");
     mobilePullsRef.current.delete(pointerId);
@@ -437,11 +438,13 @@ export function App() {
     target.dataset.pullDirection = "neutral";
     target.style.setProperty("--pull-offset", "0px");
     const poleTarget = event.target?.closest?.("[data-spin-pole-action]");
+    const tapAction = poleTarget?.dataset.spinPoleAction ?? null;
+    if (tapAction) target.dataset.pressedPole = tapAction === "rotate" ? "down" : "up";
     mobilePullsRef.current.set(event.pointerId, {
       target,
       downAction,
       upAction,
-      tapAction: poleTarget?.dataset.spinPoleAction ?? null,
+      tapAction,
       hasPulled: false,
       axis,
       lastX: event.clientX,
@@ -459,6 +462,7 @@ export function App() {
       (event.clientX - pull.originX) * pull.axis.x + (event.clientY - pull.originY) * pull.axis.y,
     ));
     pull.target.style.setProperty("--pull-offset", `${offset}px`);
+    if (Math.abs(offset) >= 4) pull.target.dataset.pullDirection = offset > 0 ? "down" : "up";
     const distance = (event.clientX - pull.lastX) * pull.axis.x + (event.clientY - pull.lastY) * pull.axis.y;
     const stepSize = 22;
     const steps = Math.min(4, Math.floor(Math.abs(distance) / stepSize));
@@ -721,6 +725,28 @@ export function App() {
                 <span className="mobile-polar-core"><span className="mobile-polar-label">Nudge</span><span className="mobile-polar-drag" aria-hidden="true">↓</span></span>
                 <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
               </button>
+              <div className="mobile-orbit-rail" role="group" aria-label="Alternate orbit controls">
+                <button
+                  id="mobile-orbit-left"
+                  type="button"
+                  aria-label="Orbit counterclockwise. Hold to repeat."
+                  disabled={hud.mode !== "playing"}
+                  onPointerDown={(event) => beginMobileControl(event, "left", { delay: 180, interval: 92 })}
+                  onPointerUp={endMobileControl}
+                  onPointerCancel={endMobileControl}
+                  onLostPointerCapture={endMobileControl}
+                >‹</button>
+                <button
+                  id="mobile-orbit-right"
+                  type="button"
+                  aria-label="Orbit clockwise. Hold to repeat."
+                  disabled={hud.mode !== "playing"}
+                  onPointerDown={(event) => beginMobileControl(event, "right", { delay: 180, interval: 92 })}
+                  onPointerUp={endMobileControl}
+                  onPointerCancel={endMobileControl}
+                  onLostPointerCapture={endMobileControl}
+                >›</button>
+              </div>
             </nav>
             {isOverlayVisible && (
               <div className="game-overlay" role="dialog" aria-modal="true" aria-label={overlayCopy.title}>
@@ -744,7 +770,7 @@ export function App() {
                   ) : <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>}
                   {hud.mode === "ready" && <>
                     <small className="desktop-start-hint">Choose a speed · Drag the field or use the control dock</small>
-                    <small className="mobile-start-hint">Drag the circle to orbit · Pull spin ↙ / ↗ · Hold nudge</small>
+                    <small className="mobile-start-hint">Drag the circle or use bottom arrows · Pull spin ↙ / ↗ · Hold nudge</small>
                   </>}
                 </div>
               </div>
