@@ -708,7 +708,7 @@ export function App() {
                 onLostPointerCapture={endMobilePull}
               >
                 <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true">↺</span>
-                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span><span className="mobile-polar-drag" aria-hidden="true">↕</span></span></span>
+                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span></span></span>
                 <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true">⟳</span>
               </button>
               <button
@@ -722,10 +722,11 @@ export function App() {
                 onPointerCancel={endMobileControl}
                 onLostPointerCapture={endMobileControl}
               >
-                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Nudge</span><span className="mobile-polar-drag" aria-hidden="true">↓</span></span></span>
+                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Nudge</span></span></span>
                 <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
               </button>
               <div className="mobile-orbit-rail" role="group" aria-label="Alternate orbit controls">
+                <span className="mobile-orbit-rail-shadow"/>
                 <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-left" aria-hidden="true" />
                 <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-right" aria-hidden="true" />
                 <button

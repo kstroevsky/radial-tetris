@@ -212,6 +212,9 @@ button { font: inherit; }
   color: rgba(102, 143, 150, 0.78);
   font-size: 8px;
   pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .frame-label-top { top: 16px; }
@@ -446,6 +449,7 @@ kbd { color: #57757a; font: inherit; }
     position: absolute;
     z-index: 4;
     inset: 0;
+    bottom: 54px;
     display: block;
     pointer-events: none;
     user-select: none;
@@ -455,8 +459,8 @@ kbd { color: #57757a; font: inherit; }
     position: absolute;
     z-index: 1;
     left: calc(50% + 4px);
-    bottom: 44px;
-    width: calc(100% - 86px);
+    bottom: 22px;
+    width: calc(100% - 80px);
     height: 27px;
     display: grid;
     grid-template-columns: 30px 1fr 30px;
@@ -469,16 +473,16 @@ kbd { color: #57757a; font: inherit; }
     content: "";
     position: absolute;
     z-index: 0;
-    left: 15px;
-    right: 15px;
-    top: 50%;
+    left: 13px;
+    right: 13px;
+    top: 58%;
     border-top: 1px solid rgba(77, 220, 232, 0.32);
     box-shadow: 0 0 8px rgba(77, 220, 232, 0.1);
   }
   .mobile-orbit-rail-glow {
     position: absolute;
     z-index: 1;
-    top: calc(50% - 1px);
+    top: calc(50% + 1px);
     width: calc((100% - 30px) * 0.14);
     height: 3px;
     opacity: 0;
@@ -487,16 +491,26 @@ kbd { color: #57757a; font: inherit; }
     transition: opacity 100ms ease, transform 120ms ease;
   }
   .mobile-orbit-rail-glow-left {
-    left: 15px;
+    left: 14px;
     transform-origin: left center;
     background: linear-gradient(90deg, rgba(215, 243, 74, 0.9), rgba(215, 243, 74, 0.34) 48%, rgba(215, 243, 74, 0));
     box-shadow: 0 0 9px rgba(215, 243, 74, 0.5);
   }
   .mobile-orbit-rail-glow-right {
-    right: 15px;
+    right: 14px;
     transform-origin: right center;
     background: linear-gradient(270deg, rgba(215, 243, 74, 0.9), rgba(215, 243, 74, 0.34) 48%, rgba(215, 243, 74, 0));
     box-shadow: 0 0 9px rgba(215, 243, 74, 0.5);
+  }
+  .mobile-orbit-rail-shadow {
+    position: absolute;
+    z-index: 1;
+    top: calc(50% + 1px);
+    left: 30%;
+    width: 40%;
+    height: 3px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, black, transparent)
   }
   .mobile-orbit-rail:has(#mobile-orbit-left[data-pressed="true"]) .mobile-orbit-rail-glow-left,
   .mobile-orbit-rail:has(#mobile-orbit-left:active) .mobile-orbit-rail-glow-left,
@@ -546,7 +560,7 @@ kbd { color: #57757a; font: inherit; }
   .mobile-polar-control {
     position: absolute;
     top: 71%;
-    width: 58px;
+    width: 48px;
     height: 120px;
     padding: 6px;
     border: 1px solid rgba(82, 171, 182, 0.52);
@@ -590,8 +604,6 @@ kbd { color: #57757a; font: inherit; }
   .mobile-polar-core {
     width: 100%;
     min-height: 42px;
-    border-top: 1px solid rgba(77, 220, 232, 0.2);
-    border-bottom: 1px solid rgba(77, 220, 232, 0.2);
     color: var(--cyan);
     display: grid;
     place-items: center;
@@ -599,11 +611,10 @@ kbd { color: #57757a; font: inherit; }
     transform: translateY(var(--pull-offset, 0px));
     transition: transform 70ms ease, background 110ms ease;
   }
-  .mobile-polar-content { display: grid; place-items: center; gap: 2px; line-height: 1; }
-  .mobile-polar-label { font-size: 7px; letter-spacing: 0.08em; line-height: 1; white-space: nowrap; }
-  .mobile-polar-drag { color: #779fa4; font: 400 18px/0.7 Georgia, serif; }
-  .mobile-spin-pull .mobile-polar-content { transform: rotate(45deg); }
-  .mobile-nudge-control .mobile-polar-content { transform: rotate(-45deg); }
+  .mobile-polar-content { position: absolute; line-height: 1; }
+  .mobile-polar-label { font-size: 12px; letter-spacing: 0.08em; line-height: 1; white-space: nowrap; }
+  #mobile-spin-pull .mobile-polar-content { transform: rotate(90deg); }
+  #mobile-nudge .mobile-polar-content { transform: rotate(-90deg); }
   .mobile-nudge-control .mobile-polar-core { min-height: 0; border-top: 0; }
   .mobile-spin-pull[data-pull-direction="down"] .mobile-polar-core, .mobile-spin-pull[data-pressed-pole="down"] .mobile-polar-core {
     background: linear-gradient(to bottom, rgba(215, 243, 74, 0) 12%, rgba(215, 243, 74, 0.08) 48%, rgba(215, 243, 74, 0.32) 100%);
@@ -713,7 +724,7 @@ kbd { color: #57757a; font: inherit; }
   body { width: 100%; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: auto; -webkit-overflow-scrolling: touch; }
   #root { width: 100%; min-height: 100dvh; }
   .game-shell { height: 100dvh; min-height: 100dvh; overflow: visible; }
-  .game-canvas { transform: translateY(-16px); }
+  .game-canvas { transform: translateY(-54px); }
 }
 
 @media (min-width: 981px) and (min-height: 780px) {
