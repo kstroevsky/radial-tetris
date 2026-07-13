@@ -821,7 +821,15 @@ export function App() {
         </button>
       </nav>
 
-      <footer className="footer-line"><span>EXPONENTIAL FIELD MAPPING</span><p>Close every angular segment to collapse a ring.</p><span>BUILD 01.00</span></footer>
+      <div className={`mobile-footer-credit ${isOverlayVisible ? "is-obscured" : ""}`}>
+        <span>2026 | Created and delivered by </span><a href="https://github.com/kstroevsky" target="_blank" rel="noreferrer">kstroevsky</a>
+      </div>
+
+      <footer className="footer-line">
+        <span>EXPONENTIAL FIELD MAPPING</span>
+        <p>Close every angular segment to collapse a ring.</p>
+        <span className="footer-credit">2026 | Created and delivered by <a href="https://github.com/kstroevsky" target="_blank" rel="noreferrer">kstroevsky</a></span>
+      </footer>
     </main>
   );
 }
