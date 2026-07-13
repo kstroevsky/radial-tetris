@@ -12,5 +12,6 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep direct drag on the circle as the primary orbit gesture. Mobile also has an understated bottom orbit rail with arrow ends as a secondary option.
 - Keep the mobile orbit-rail glow subtle and arrow-adjacent. Expand the invisible hit target instead: each side covers the last part of its line plus the outer space beyond its arrow, while leaving the rail artwork unchanged.
 - Keep the left Spin capsule two-ended and light its active pole during a tap or pull. Keep Nudge visually distinct and single-ended, with directional gradient press/hold feedback instead of filling the whole control.
+- Mobile polar-controller feedback uses a soft blue radial halo for the large ambient glow and a yellow radial ring for either active pole. Never use a linear fill inside the capsule. The two Spin icons must use the same glyph, size, and weight, mirrored only for direction.
 - Prefer a fullscreen game shell on normal-size viewports; preserve overflow only where compressing the play surface would harm usability.
 - Keep the mobile document root scrollable enough for the browser's native pull-to-refresh gesture. Do not reintroduce a fixed body, root `overflow: hidden`, or `overscroll-behavior: none` merely to suppress redundant scrolling.

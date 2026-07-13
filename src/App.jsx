@@ -707,9 +707,9 @@ export function App() {
                 onPointerCancel={endMobilePull}
                 onLostPointerCapture={endMobilePull}
               >
-                <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true">↺</span>
+                <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true"><span className="mobile-polar-icon">↻</span></span>
                 <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span></span></span>
-                <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true">⟳</span>
+                <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true"><span className="mobile-polar-icon">↻</span></span>
               </button>
               <button
                 id="mobile-nudge"
