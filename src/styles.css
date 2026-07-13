@@ -468,15 +468,46 @@ kbd { color: #57757a; font: inherit; }
   .mobile-orbit-rail::before {
     content: "";
     position: absolute;
+    z-index: 0;
     left: 15px;
     right: 15px;
     top: 50%;
     border-top: 1px solid rgba(77, 220, 232, 0.32);
     box-shadow: 0 0 8px rgba(77, 220, 232, 0.1);
   }
+  .mobile-orbit-rail-glow {
+    position: absolute;
+    z-index: 1;
+    top: calc(50% - 1px);
+    width: calc((100% - 30px) * 0.14);
+    height: 3px;
+    opacity: 0;
+    pointer-events: none;
+    transform: scaleX(0.42);
+    transition: opacity 100ms ease, transform 120ms ease;
+  }
+  .mobile-orbit-rail-glow-left {
+    left: 15px;
+    transform-origin: left center;
+    background: linear-gradient(90deg, rgba(215, 243, 74, 0.9), rgba(215, 243, 74, 0.34) 48%, rgba(215, 243, 74, 0));
+    box-shadow: 0 0 9px rgba(215, 243, 74, 0.5);
+  }
+  .mobile-orbit-rail-glow-right {
+    right: 15px;
+    transform-origin: right center;
+    background: linear-gradient(270deg, rgba(215, 243, 74, 0.9), rgba(215, 243, 74, 0.34) 48%, rgba(215, 243, 74, 0));
+    box-shadow: 0 0 9px rgba(215, 243, 74, 0.5);
+  }
+  .mobile-orbit-rail:has(#mobile-orbit-left[data-pressed="true"]) .mobile-orbit-rail-glow-left,
+  .mobile-orbit-rail:has(#mobile-orbit-left:active) .mobile-orbit-rail-glow-left,
+  .mobile-orbit-rail:has(#mobile-orbit-right[data-pressed="true"]) .mobile-orbit-rail-glow-right,
+  .mobile-orbit-rail:has(#mobile-orbit-right:active) .mobile-orbit-rail-glow-right {
+    opacity: 1;
+    transform: scaleX(1);
+  }
   .mobile-orbit-rail button {
     position: relative;
-    z-index: 1;
+    z-index: 2;
     width: 30px;
     height: 27px;
     padding: 0;
@@ -661,9 +692,10 @@ kbd { color: #57757a; font: inherit; }
 }
 
 @media (max-width: 700px) and (min-height: 650px) {
-  html, body, #root { width: 100%; height: 100dvh; min-height: 0; overflow: hidden; }
-  body { position: fixed; inset: 0; overscroll-behavior: none; }
-  .game-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+  html { width: 100%; height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: auto; }
+  body { width: 100%; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: auto; -webkit-overflow-scrolling: touch; }
+  #root { width: 100%; min-height: 100dvh; }
+  .game-shell { height: 100dvh; min-height: 100dvh; overflow: visible; }
   .game-canvas { transform: translateY(-16px); }
 }
 

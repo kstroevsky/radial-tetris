@@ -12,3 +12,4 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep direct drag on the circle as the primary orbit gesture. Mobile also has an understated bottom orbit rail with arrow ends as a secondary option.
 - Keep the left Spin capsule two-ended and light its active pole during a tap or pull. Keep Nudge visually distinct and single-ended, with directional gradient press/hold feedback instead of filling the whole control.
 - Prefer a fullscreen game shell on normal-size viewports; preserve overflow only where compressing the play surface would harm usability.
+- Keep the mobile document root scrollable enough for the browser's native pull-to-refresh gesture. Do not reintroduce a fixed body, root `overflow: hidden`, or `overscroll-behavior: none` merely to suppress redundant scrolling.

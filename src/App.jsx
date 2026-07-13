@@ -726,6 +726,8 @@ export function App() {
                 <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
               </button>
               <div className="mobile-orbit-rail" role="group" aria-label="Alternate orbit controls">
+                <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-left" aria-hidden="true" />
+                <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-right" aria-hidden="true" />
                 <button
                   id="mobile-orbit-left"
                   type="button"
