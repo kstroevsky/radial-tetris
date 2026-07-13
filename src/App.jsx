@@ -737,7 +737,7 @@ export function App() {
                   onPointerUp={endMobileControl}
                   onPointerCancel={endMobileControl}
                   onLostPointerCapture={endMobileControl}
-                >‹</button>
+                ><span className="mobile-orbit-arrow" aria-hidden="true">‹</span></button>
                 <button
                   id="mobile-orbit-right"
                   type="button"
@@ -747,7 +747,7 @@ export function App() {
                   onPointerUp={endMobileControl}
                   onPointerCancel={endMobileControl}
                   onLostPointerCapture={endMobileControl}
-                >›</button>
+                ><span className="mobile-orbit-arrow" aria-hidden="true">›</span></button>
               </div>
             </nav>
             {isOverlayVisible && (

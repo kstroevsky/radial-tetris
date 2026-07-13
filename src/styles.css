@@ -479,7 +479,7 @@ kbd { color: #57757a; font: inherit; }
     position: absolute;
     z-index: 1;
     top: calc(50% - 1px);
-    width: calc((100% - 30px) * 0.3);
+    width: calc((100% - 30px) * 0.14);
     height: 3px;
     opacity: 0;
     pointer-events: none;
@@ -506,22 +506,39 @@ kbd { color: #57757a; font: inherit; }
     transform: scaleX(1);
   }
   .mobile-orbit-rail button {
-    position: relative;
+    position: absolute;
     z-index: 2;
-    width: 30px;
-    height: 27px;
+    top: -18px;
+    width: calc((100% - 30px) * 0.3 + 62px);
+    height: 64px;
     padding: 0;
     border: 0;
     color: rgba(125, 191, 198, 0.84);
     background: transparent;
     cursor: pointer;
-    font: 400 28px/0.75 Georgia, serif;
     touch-action: none;
-    transition: color 100ms ease, background 100ms ease, text-shadow 100ms ease;
+    transition: color 100ms ease;
   }
-  .mobile-orbit-rail button:last-child { grid-column: 3; }
+  #mobile-orbit-left { left: -47px; }
+  #mobile-orbit-right { right: -39px; }
+  .mobile-orbit-arrow {
+    position: absolute;
+    top: 50%;
+    display: grid;
+    width: 30px;
+    height: 27px;
+    place-items: center;
+    transform: translateY(-50%);
+    font: 400 28px/0.75 Georgia, serif;
+    transition: background 100ms ease, text-shadow 100ms ease;
+  }
+  #mobile-orbit-left .mobile-orbit-arrow { left: 47px; }
+  #mobile-orbit-right .mobile-orbit-arrow { right: 39px; }
   .mobile-orbit-rail button[data-pressed="true"], .mobile-orbit-rail button:active {
     color: #efffb1;
+  }
+  .mobile-orbit-rail button[data-pressed="true"] .mobile-orbit-arrow,
+  .mobile-orbit-rail button:active .mobile-orbit-arrow {
     background: radial-gradient(circle, rgba(215, 243, 74, 0.32), rgba(215, 243, 74, 0) 72%);
     text-shadow: 0 0 12px rgba(215, 243, 74, 0.88);
   }
