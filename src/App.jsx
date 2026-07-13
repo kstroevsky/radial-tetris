@@ -821,7 +821,7 @@ export function App() {
         </button>
       </nav>
 
-      <div className={`mobile-footer-credit ${isOverlayVisible ? "is-obscured" : ""}`}>
+      <div className="mobile-footer-credit">
         <span>2026 | Created and delivered by </span><a href="https://github.com/kstroevsky" target="_blank" rel="noreferrer">kstroevsky</a>
       </div>
 

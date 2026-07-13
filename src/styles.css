@@ -697,11 +697,10 @@ kbd { color: #57757a; font: inherit; }
     bottom: max(5px, env(safe-area-inset-bottom));
     display: block;
     color: #58767b;
-    font: 7px/1 ui-monospace, monospace;
-    letter-spacing: 0.035em;
+    font: 8px/1.15 ui-monospace, monospace;
+    letter-spacing: 0.03em;
     white-space: nowrap;
   }
-  .mobile-footer-credit.is-obscured { visibility: hidden; }
 
   .systems-panel {
     display: none;
@@ -789,7 +788,7 @@ kbd { color: #57757a; font: inherit; }
     min-height: 0;
     padding: 13px 16px;
     display: grid;
-    grid-template-columns: 120px minmax(0, 1fr) 205px;
+    grid-template-columns: 110px minmax(160px, 0.65fr) minmax(250px, 1.35fr);
     grid-template-rows: 22px minmax(0, 1fr);
     column-gap: 14px;
     row-gap: 5px;
@@ -804,7 +803,7 @@ kbd { color: #57757a; font: inherit; }
   .systems-panel .integrity-row { gap: 6px; }
   .systems-panel .field-load { grid-column: 3; grid-row: 1; margin: 0; align-self: center; }
   .systems-panel .system-actions { grid-column: 3; grid-row: 2; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .systems-panel .system-actions button { min-height: 34px; padding: 0 6px; font-size: 7px; }
+  .systems-panel .system-actions button { min-height: 44px; padding: 0 10px; font-size: 8px; }
 
   .game-overlay { padding: 10px; }
   .overlay-card { width: min(390px, 94%); padding: 18px 22px; }

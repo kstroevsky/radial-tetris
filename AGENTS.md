@@ -16,5 +16,6 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep the Nudge action icon at the same visual weight and scale as Spin’s icons; it is a direct glyph, so it must retain an explicit base font after label styles change.
 - Prefer a fullscreen game shell on normal-size viewports; preserve overflow only where compressing the play surface would harm usability.
 - Keep the mobile document root scrollable enough for the browser's native pull-to-refresh gesture. Do not reintroduce a fixed body, root `overflow: hidden`, or `overscroll-behavior: none` merely to suppress redundant scrolling.
-- Show a deliberately tiny footer credit on every main gameplay layout: `2026 | Created and delivered by kstroevsky`, with `kstroevsky` linking to GitHub. On phone it may be fixed at the safe-area edge, but must hide behind a modal overlay.
+- Show a small but legible footer credit on every main gameplay layout: `2026 | Created and delivered by kstroevsky`, with `kstroevsky` linking to GitHub. On phone it is fixed at the safe-area edge and remains visible during difficulty and pause overlays.
 - Treat 701–1100px widths as a compact tablet mode: keep the game shell viewport-height when the viewport is at least 620px high, use a shallow system strip, and constrain the start card so all three difficulty choices remain visible.
+- In the compact tablet system strip, give Ring Integrity only its necessary width and prioritize large, touch-friendly Pause/Restart/Fullscreen controls.
