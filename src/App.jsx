@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DIFFICULTIES,
   PIECE_COLORS,
@@ -303,7 +303,7 @@ function Stat({ label, value, accent = false }) {
   );
 }
 
-function IntegrityReadout({ values }) {
+const IntegrityReadout = memo(function IntegrityReadout({ values }) {
   const ranked = values.map((value, ring) => ({ value, ring })).sort((a, b) => b.value - a.value).slice(0, 4);
   return (
     <div className="integrity-list" aria-label="Most complete rings">
@@ -316,6 +316,25 @@ function IntegrityReadout({ values }) {
       ))}
     </div>
   );
+});
+
+function hudSnapshot(game) {
+  return {
+    mode: game.mode,
+    score: game.score,
+    best: game.best,
+    level: game.level,
+    difficulty: game.difficulty,
+    ringsCleared: game.ringsCleared,
+    combo: Math.max(0, game.combo),
+    active: game.active ? {
+      type: game.active.type,
+      sector: game.active.sector,
+      ring: game.active.ring,
+    } : null,
+    nextType: game.nextType,
+    message: game.message,
+  };
 }
 
 export function App() {
@@ -326,7 +345,10 @@ export function App() {
   const pendingPointerSectorRef = useRef(null);
   const orbitFrameRef = useRef(0);
   const mobileRepeatsRef = useRef(new Map());
+  const mobileRepeatStatesRef = useRef(new Set());
   const mobilePullsRef = useRef(new Map());
+  const clearMobileInputsRef = useRef(() => {});
+  const refreshGameLoopRef = useRef(() => {});
   if (!gameRef.current) {
     gameRef.current = createGame();
     try {
@@ -337,14 +359,18 @@ export function App() {
   }
 
   const [hud, setHud] = useState(() => ({
-    ...gameSnapshot(gameRef.current),
-    best: gameRef.current.best,
+    ...hudSnapshot(gameRef.current),
     integrity: ringIntegrity(gameRef.current),
   }));
 
-  const syncHud = useCallback(() => {
+  const syncHud = useCallback((updateIntegrity = true) => {
     const game = gameRef.current;
-    setHud({ ...gameSnapshot(game), best: game.best, integrity: ringIntegrity(game) });
+    const nextHud = hudSnapshot(game);
+    if (updateIntegrity) {
+      setHud({ ...nextHud, integrity: ringIntegrity(game) });
+    } else {
+      setHud((current) => ({ ...nextHud, integrity: current.integrity }));
+    }
   }, []);
 
   const redraw = useCallback(() => drawScene(canvasRef.current, gameRef.current), []);
@@ -359,7 +385,9 @@ export function App() {
 
   const act = useCallback((action) => {
     const game = gameRef.current;
+    const activeBefore = game.active;
     let changed = false;
+    if (action === "pause" || action === "restart") clearMobileInputsRef.current();
     if (action === "left") changed = moveAround(game, -1);
     if (action === "right") changed = moveAround(game, 1);
     if (action === "rotate") changed = rotatePiece(game, 1);
@@ -368,26 +396,44 @@ export function App() {
     if (action === "drop") changed = hardDrop(game) >= 0;
     if (action === "pause") { pauseGame(game); changed = true; }
     if (action === "restart") { resetGame(game); changed = true; }
-    if (changed) { syncHud(); redraw(); }
+    if (changed) {
+      syncHud(action === "restart" || game.active !== activeBefore);
+      redraw();
+      refreshGameLoopRef.current();
+    }
   }, [redraw, syncHud]);
 
-  const clearMobileRepeat = useCallback((pointerId) => {
-    const repeat = mobileRepeatsRef.current.get(pointerId);
-    if (!repeat) return;
-    window.clearTimeout(repeat.delayId);
-    window.clearInterval(repeat.intervalId);
+  const clearMobileRepeatState = useCallback((repeat) => {
+    if (!repeat || repeat.stopped) return;
+    repeat.stopped = true;
+    window.clearTimeout(repeat.timerId);
     repeat.target?.removeAttribute("data-pressed");
-    mobileRepeatsRef.current.delete(pointerId);
+    try {
+      if (repeat.target?.hasPointerCapture?.(repeat.pointerId)) {
+        repeat.target.releasePointerCapture(repeat.pointerId);
+      }
+    } catch {
+      // Pointer capture may already have been released by the browser.
+    }
+    if (mobileRepeatsRef.current.get(repeat.pointerId) === repeat) {
+      mobileRepeatsRef.current.delete(repeat.pointerId);
+    }
+    mobileRepeatStatesRef.current.delete(repeat);
   }, []);
 
+  const clearMobileRepeat = useCallback((pointerId) => {
+    clearMobileRepeatState(mobileRepeatsRef.current.get(pointerId));
+  }, [clearMobileRepeatState]);
+
   const clearAllMobileRepeats = useCallback(() => {
-    for (const pointerId of mobileRepeatsRef.current.keys()) clearMobileRepeat(pointerId);
-  }, [clearMobileRepeat]);
+    for (const repeat of [...mobileRepeatStatesRef.current]) clearMobileRepeatState(repeat);
+  }, [clearMobileRepeatState]);
 
   const beginMobileControl = useCallback((event, action, repeat) => {
     if (gameRef.current.mode !== "playing") return;
     event.preventDefault();
     const target = event.currentTarget;
+    clearMobileRepeat(event.pointerId);
     try {
       target.setPointerCapture?.(event.pointerId);
     } catch {
@@ -398,13 +444,24 @@ export function App() {
     if (navigator.vibrate) navigator.vibrate(action === "drop" ? 14 : 6);
     if (!repeat) return;
 
-    const state = { target, delayId: 0, intervalId: 0 };
-    state.delayId = window.setTimeout(() => {
+    const state = { pointerId: event.pointerId, target, timerId: 0, stopped: false };
+    const tick = () => {
+      if (state.stopped) return;
+      if (gameRef.current.mode !== "playing") {
+        clearMobileRepeatState(state);
+        return;
+      }
       act(action);
-      state.intervalId = window.setInterval(() => act(action), repeat.interval);
-    }, repeat.delay);
+      if (state.stopped || gameRef.current.mode !== "playing") {
+        clearMobileRepeatState(state);
+        return;
+      }
+      state.timerId = window.setTimeout(tick, repeat.interval);
+    };
     mobileRepeatsRef.current.set(event.pointerId, state);
-  }, [act]);
+    mobileRepeatStatesRef.current.add(state);
+    state.timerId = window.setTimeout(tick, repeat.delay);
+  }, [act, clearMobileRepeat, clearMobileRepeatState]);
 
   const endMobileControl = useCallback((event) => {
     event.currentTarget?.removeAttribute("data-pressed");
@@ -425,10 +482,18 @@ export function App() {
     for (const pointerId of mobilePullsRef.current.keys()) clearMobilePull(pointerId);
   }, [clearMobilePull]);
 
+  const clearMobileInputs = useCallback(() => {
+    clearAllMobileRepeats();
+    clearAllMobilePulls();
+  }, [clearAllMobilePulls, clearAllMobileRepeats]);
+
+  clearMobileInputsRef.current = clearMobileInputs;
+
   const beginMobilePull = useCallback((event, downAction, upAction, axis = { x: 0, y: 1 }) => {
     if (gameRef.current.mode !== "playing") return;
     event.preventDefault();
     const target = event.currentTarget;
+    clearMobilePull(event.pointerId);
     try {
       target.setPointerCapture?.(event.pointerId);
     } catch {
@@ -452,7 +517,7 @@ export function App() {
       originX: event.clientX,
       originY: event.clientY,
     });
-  }, []);
+  }, [clearMobilePull]);
 
   const moveMobilePull = useCallback((event) => {
     const pull = mobilePullsRef.current.get(event.pointerId);
@@ -493,29 +558,36 @@ export function App() {
 
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        clearAllMobileRepeats();
-        clearAllMobilePulls();
-      }
+      if (document.visibilityState !== "visible") clearMobileInputs();
     };
-    const clearMobileInputs = () => {
-      clearAllMobileRepeats();
-      clearAllMobilePulls();
+    const onPointerEnd = (event) => {
+      clearMobileRepeat(event.pointerId);
+      clearMobilePull(event.pointerId);
     };
     window.addEventListener("blur", clearMobileInputs);
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerEnd);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("blur", clearMobileInputs);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearMobileInputs();
     };
-  }, [clearAllMobilePulls, clearAllMobileRepeats]);
+  }, [clearMobileInputs, clearMobilePull, clearMobileRepeat]);
+
+  useEffect(() => {
+    if (hud.mode !== "playing") clearMobileInputs();
+  }, [clearMobileInputs, hud.mode]);
 
   const start = useCallback((difficulty = "normal") => {
+    clearMobileInputsRef.current();
     if (gameRef.current.mode === "ready") setDifficulty(gameRef.current, difficulty);
     startGame(gameRef.current);
     syncHud();
     redraw();
+    refreshGameLoopRef.current();
     canvasRef.current?.focus();
   }, [redraw, syncHud]);
 
@@ -525,22 +597,76 @@ export function App() {
       else await frameRef.current?.requestFullscreen();
     } catch {
       gameRef.current.message = "Fullscreen unavailable";
-      syncHud();
+      syncHud(false);
     }
   }, [syncHud]);
 
   useEffect(() => {
-    let animationId;
+    let animationId = 0;
+    let disposed = false;
     let previous = performance.now();
+
+    const shouldRun = () => {
+      const game = gameRef.current;
+      return document.visibilityState === "visible" && (
+        game.mode === "playing" || game.clearFlash > 0 || game.particles.length > 0
+      );
+    };
+
+    const requestNextFrame = () => {
+      if (disposed || animationId || !shouldRun()) return;
+      animationId = requestAnimationFrame(frame);
+    };
+
+    const refreshGameLoop = () => {
+      if (disposed) return;
+      if (!shouldRun()) {
+        if (animationId) cancelAnimationFrame(animationId);
+        animationId = 0;
+        return;
+      }
+      if (!animationId) {
+        previous = performance.now();
+        requestNextFrame();
+      }
+    };
+
     const frame = (now) => {
+      animationId = 0;
+      if (disposed) return;
       const delta = Math.min(0.05, Math.max(0, (now - previous) / 1000));
       previous = now;
-      const sceneChanged = updateGame(gameRef.current, delta);
+      const game = gameRef.current;
+      const hudBefore = {
+        active: game.active,
+        activeRing: game.active?.ring,
+        mode: game.mode,
+        score: game.score,
+        best: game.best,
+        level: game.level,
+        ringsCleared: game.ringsCleared,
+        combo: game.combo,
+        nextType: game.nextType,
+        message: game.message,
+      };
+      const sceneChanged = updateGame(game, delta);
       if (sceneChanged) {
-        drawScene(canvasRef.current, gameRef.current);
-        syncHud();
+        drawScene(canvasRef.current, game);
+        const hudChanged = (
+          game.active !== hudBefore.active
+          || game.active?.ring !== hudBefore.activeRing
+          || game.mode !== hudBefore.mode
+          || game.score !== hudBefore.score
+          || game.best !== hudBefore.best
+          || game.level !== hudBefore.level
+          || game.ringsCleared !== hudBefore.ringsCleared
+          || game.combo !== hudBefore.combo
+          || game.nextType !== hudBefore.nextType
+          || game.message !== hudBefore.message
+        );
+        if (hudChanged) syncHud(game.active !== hudBefore.active);
       }
-      animationId = requestAnimationFrame(frame);
+      requestNextFrame();
     };
 
     const onKeyDown = (event) => {
@@ -561,12 +687,16 @@ export function App() {
     };
 
     const onResize = () => drawScene(canvasRef.current, gameRef.current);
-    const onVisibilityChange = () => { previous = performance.now(); };
+    const onVisibilityChange = () => {
+      previous = performance.now();
+      refreshGameLoop();
+    };
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibilityChange);
     drawScene(canvasRef.current, gameRef.current);
-    animationId = requestAnimationFrame(frame);
+    refreshGameLoopRef.current = refreshGameLoop;
+    refreshGameLoop();
     window.render_game_to_text = () => JSON.stringify(gameSnapshot(gameRef.current));
     window.getGamePerformanceStats = () => {
       const metrics = renderMetrics.get(canvasRef.current) ?? { draws: 0, totalMs: 0, maxMs: 0, lastMs: 0, pixelCount: 0 };
@@ -590,7 +720,9 @@ export function App() {
     };
 
     return () => {
-      cancelAnimationFrame(animationId);
+      disposed = true;
+      if (animationId) cancelAnimationFrame(animationId);
+      if (refreshGameLoopRef.current === refreshGameLoop) refreshGameLoopRef.current = () => {};
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
       delete window.render_game_to_text;
@@ -618,7 +750,7 @@ export function App() {
       if (!moveAround(gameRef.current, direction)) break;
     }
     pointerRef.current.sector = target;
-    syncHud();
+    syncHud(false);
     redraw();
   }, [redraw, syncHud]);
 
