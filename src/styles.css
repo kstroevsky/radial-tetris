@@ -612,7 +612,25 @@ kbd { color: #57757a; font: inherit; }
 }
 
 @media (max-width: 700px) {
-  .game-shell { min-height: 100dvh; }
+  .game-shell {
+    min-height: 100dvh;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .game-shell :where(h1, h2, p, span, strong, small, kbd, label, th, td, .eyebrow, .frame-label) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+  }
+  .game-shell :where(button, a, input, textarea, select, [role="button"], [role="dialog"]) {
+    pointer-events: auto;
+  }
+  .game-shell :where(input, textarea) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
   .topbar { min-height: 56px; padding: 0 14px; }
   .brand-index, .topbar-status span, .footer-line span:first-child { display: none; }
   .brand-lockup { gap: 0; }
@@ -641,7 +659,7 @@ kbd { color: #57757a; font: inherit; }
   .board-column { order: 2; display: block; }
   .board-frame { height: min(630px, calc(100dvh - 204px)); min-height: 350px; }
   .board-frame::before, .board-frame::after { display: none; }
-  .game-canvas { width: min(100%, max(220px, calc(100dvh - 394px))); }
+  .game-canvas { width: min(calc(100% + 16px), max(250px, calc(100dvh - 230px))); }
   .touch-controls { display: none; }
   .mobile-gesture-help {
     position: absolute;

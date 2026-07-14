@@ -35,16 +35,16 @@ const TAU = Math.PI * 2;
 const staticLayers = new WeakMap();
 const renderMetrics = new WeakMap();
 const BEST_SCORE_KEY = "radial-tetris-best-score";
-const MOBILE_GESTURE_GUIDE_KEY = "radial-tetris-mobile-gesture-guide-v1";
+const MOBILE_GESTURE_GUIDE_KEY = "radial-tetris-mobile-gesture-guide-v2";
 const MOBILE_GESTURE_QUERY = "(max-width: 700px)";
 const MOBILE_GESTURE_STEP_PX = 22;
 const MOBILE_GESTURE_SLOP_PX = 12;
 const MOBILE_GESTURE_RESOLVE_PX = 24;
 const MOBILE_GESTURE_DOMINANCE = 1.25;
-const MOBILE_TAP_SLOP_PX = 10;
-const MOBILE_TAP_MAX_MS = 260;
-const MOBILE_FLICK_CANDIDATE_PX = 24;
-const MOBILE_FLICK_CANDIDATE_MS = 110;
+const MOBILE_TAP_SLOP_PX = 12;
+const MOBILE_TAP_MAX_MS = 240;
+const MOBILE_HOLD_NUDGE_DELAY_MS = 320;
+const MOBILE_HOLD_NUDGE_REPEAT_MS = 96;
 const MOBILE_FLICK_MIN_PX = 48;
 const MOBILE_FLICK_MAX_MS = 180;
 const MOBILE_FLICK_MIN_VELOCITY = 0.45;
@@ -238,9 +238,10 @@ function drawScene(canvas, game) {
   const cssHeight = Math.max(1, rect.height);
   // The game board is a canvas. A 1.5× cap made high-density Android screens
   // upscale its pixels, which softened the grid and falling pieces. The static
-  // layer is cached and dynamic draws are demand-driven, so a 2.5× mobile cap
-  // restores sharp edges without forcing a full redraw every animation frame.
-  const dprCap = cssWidth <= 540 ? 2.5 : 2;
+  // layer is cached and dynamic draws are demand-driven, so a 3× mobile cap
+  // preserves native high-density phone detail without forcing a full redraw
+  // every animation frame.
+  const dprCap = cssWidth <= 540 ? 3 : 2;
   const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
   const targetWidth = Math.round(cssWidth * dpr);
   const targetHeight = Math.round(cssHeight * dpr);
@@ -538,7 +539,7 @@ export function App() {
     const gesture = mobileGestureRef.current;
     if (!gesture || (pointerId != null && gesture.pointerId !== pointerId)) return false;
     gesture.stopped = true;
-    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
+    if (gesture.holdTimerId) window.clearTimeout(gesture.holdTimerId);
     if (mobileGestureFrameRef.current) cancelAnimationFrame(mobileGestureFrameRef.current);
     mobileGestureFrameRef.current = 0;
     pendingMobilePointRef.current = null;
@@ -576,50 +577,35 @@ export function App() {
     return moved;
   }, [redraw, syncHud]);
 
-  const applyMobileSoftSteps = useCallback((gesture) => {
-    const available = gesture.inwardDistance - gesture.softAppliedDistance;
-    const steps = Math.min(4, Math.floor(available / MOBILE_GESTURE_STEP_PX));
-    if (!steps) return false;
-    const activeBefore = gameRef.current.active;
-    let attempted = 0;
-    let changed = false;
-    while (attempted < steps && gameRef.current.mode === "playing" && gameRef.current.active === gesture.active) {
-      const pieceBefore = gameRef.current.active;
-      const moved = stepInward(gameRef.current, true);
-      attempted += 1;
-      changed = moved || gameRef.current.active !== pieceBefore || changed;
-      if (gameRef.current.active !== gesture.active) break;
+  const applyMobileHoldNudge = useCallback(function applyMobileHoldNudge(gesture) {
+    if (!gesture || gesture.stopped || mobileGestureRef.current !== gesture) return;
+    if (gameRef.current.mode !== "playing" || gameRef.current.active !== gesture.active) {
+      clearMobileGesture(gesture.pointerId);
+      return;
     }
-    gesture.softAppliedDistance += attempted * MOBILE_GESTURE_STEP_PX;
-    if (changed) {
-      syncHud(gameRef.current.active !== activeBefore);
+    if (gesture.intent !== "pending" && gesture.intent !== "hold") return;
+    if (gesture.intent === "pending" && gesture.travelDistance > MOBILE_GESTURE_SLOP_PX) return;
+
+    gesture.intent = "hold";
+    gesture.holdActive = true;
+    const activeBefore = gameRef.current.active;
+    const moved = stepInward(gameRef.current, true);
+    const pieceChanged = gameRef.current.active !== activeBefore;
+    if (moved || pieceChanged) {
+      syncHud(pieceChanged);
       redraw();
       refreshGameLoopRef.current();
       if (navigator.vibrate) navigator.vibrate(5);
     }
-    if (gameRef.current.active !== gesture.active) clearMobileGesture(gesture.pointerId);
-    return changed;
-  }, [clearMobileGesture, redraw, syncHud]);
-
-  const commitMobileSoftDrop = useCallback((gesture) => {
-    if (!gesture || gesture.stopped || mobileGestureRef.current !== gesture) return;
-    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
-    gesture.commitTimerId = 0;
-    gesture.flickCandidate = false;
-    gesture.softCommitted = true;
-    applyMobileSoftSteps(gesture);
-  }, [applyMobileSoftSteps]);
-
-  const armMobileGestureCommit = useCallback((gesture, deadlineMs) => {
-    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
-    const elapsed = performance.now() - gesture.startTime;
-    const remaining = Math.max(0, deadlineMs - elapsed);
-    if (!remaining) {
-      commitMobileSoftDrop(gesture);
+    if (pieceChanged) {
+      clearMobileGesture(gesture.pointerId);
       return;
     }
-    gesture.commitTimerId = window.setTimeout(() => commitMobileSoftDrop(gesture), remaining);
-  }, [commitMobileSoftDrop]);
+    gesture.holdTimerId = window.setTimeout(
+      () => applyMobileHoldNudge(gesture),
+      MOBILE_HOLD_NUDGE_REPEAT_MS,
+    );
+  }, [clearMobileGesture, redraw, syncHud]);
 
   const processMobileGesturePoint = useCallback((gesture, point) => {
     if (!gesture || gesture.stopped || mobileGestureRef.current !== gesture) return;
@@ -647,6 +633,7 @@ export function App() {
 
     const tangential = Math.abs(gesture.totalTangential);
     const inward = gesture.inwardDistance;
+    if (gesture.intent === "hold") return;
     if (gesture.intent === "pending" && gesture.travelDistance >= MOBILE_GESTURE_SLOP_PX) {
       if (gesture.outwardDistance >= MOBILE_GESTURE_SLOP_PX
         && gesture.outwardDistance >= tangential * MOBILE_GESTURE_DOMINANCE) {
@@ -656,35 +643,21 @@ export function App() {
         gesture.intent = "orbit";
       } else if (inward >= MOBILE_GESTURE_SLOP_PX
         && inward >= tangential * MOBILE_GESTURE_DOMINANCE) {
-        gesture.intent = "inward";
+        gesture.intent = "flick";
       } else if (gesture.travelDistance >= MOBILE_GESTURE_RESOLVE_PX) {
-        gesture.intent = inward > tangential ? "inward" : tangential > inward ? "orbit" : "ignored";
+        gesture.intent = inward > tangential ? "flick" : tangential > inward ? "orbit" : "ignored";
       }
+    }
+
+    if (gesture.intent !== "pending" && gesture.holdTimerId) {
+      window.clearTimeout(gesture.holdTimerId);
+      gesture.holdTimerId = 0;
     }
 
     if (gesture.intent === "orbit") {
       applyMobileOrbitSteps(gesture);
-      return;
     }
-    if (gesture.intent !== "inward") return;
-
-    const elapsed = Math.max(1, point.time - gesture.startTime);
-    const inwardVelocity = inward / elapsed;
-    if (!gesture.softCommitted) {
-      if (inward >= MOBILE_FLICK_CANDIDATE_PX
-        && elapsed <= MOBILE_FLICK_CANDIDATE_MS
-        && inwardVelocity >= MOBILE_FLICK_MIN_VELOCITY) {
-        gesture.flickCandidate = true;
-        armMobileGestureCommit(gesture, MOBILE_FLICK_MAX_MS);
-      } else if (elapsed >= MOBILE_FLICK_CANDIDATE_MS
-        || (inward >= MOBILE_GESTURE_STEP_PX && inwardVelocity < MOBILE_FLICK_MIN_VELOCITY)) {
-        commitMobileSoftDrop(gesture);
-      } else {
-        armMobileGestureCommit(gesture, MOBILE_FLICK_CANDIDATE_MS);
-      }
-    }
-    if (gesture.softCommitted) applyMobileSoftSteps(gesture);
-  }, [applyMobileOrbitSteps, applyMobileSoftSteps, armMobileGestureCommit, clearMobileGesture, commitMobileSoftDrop]);
+  }, [applyMobileOrbitSteps, clearMobileGesture]);
 
   const flushMobileGestureFrame = useCallback(function flushMobileGestureFrame() {
     mobileGestureFrameRef.current = 0;
@@ -697,20 +670,16 @@ export function App() {
     if (mobileGestureRef.current !== gesture || gesture.stopped) return;
 
     if (!point && gesture.intent === "orbit") applyMobileOrbitSteps(gesture);
-    if (!point && gesture.intent === "inward" && gesture.softCommitted) applyMobileSoftSteps(gesture);
     if (mobileGestureRef.current !== gesture || gesture.stopped) return;
 
     const hasOrbitBacklog = gesture.intent === "orbit"
       && Math.abs(gesture.orbitAccumulator) >= MOBILE_GESTURE_STEP_PX;
-    const hasSoftDropBacklog = gesture.intent === "inward"
-      && gesture.softCommitted
-      && gesture.inwardDistance - gesture.softAppliedDistance >= MOBILE_GESTURE_STEP_PX;
-    if (pendingMobilePointRef.current || hasOrbitBacklog || hasSoftDropBacklog) {
+    if (pendingMobilePointRef.current || hasOrbitBacklog) {
       mobileGestureFrameRef.current = requestAnimationFrame(flushMobileGestureFrame);
     } else if (gesture.released) {
       clearMobileGesture(gesture.pointerId);
     }
-  }, [applyMobileOrbitSteps, applyMobileSoftSteps, clearMobileGesture, processMobileGesturePoint]);
+  }, [applyMobileOrbitSteps, clearMobileGesture, processMobileGesturePoint]);
 
   const beginMobileGesture = useCallback((event) => {
     if (gameRef.current.mode !== "playing" || gestureGuideRef.current.open) return;
@@ -730,7 +699,7 @@ export function App() {
     const x = event.clientX - centerX;
     const y = event.clientY - centerY;
     const now = performance.now();
-    mobileGestureRef.current = {
+    const gesture = {
       pointerId: event.pointerId,
       target,
       active: gameRef.current.active,
@@ -752,13 +721,16 @@ export function App() {
       inwardDistance: 0,
       outwardDistance: 0,
       travelDistance: 0,
-      softAppliedDistance: 0,
-      softCommitted: false,
-      flickCandidate: false,
-      commitTimerId: 0,
+      holdActive: false,
+      holdTimerId: 0,
       released: false,
     };
-  }, [clearMobileGesture]);
+    mobileGestureRef.current = gesture;
+    gesture.holdTimerId = window.setTimeout(
+      () => applyMobileHoldNudge(gesture),
+      MOBILE_HOLD_NUDGE_DELAY_MS,
+    );
+  }, [applyMobileHoldNudge, clearMobileGesture]);
 
   const moveMobileGesture = useCallback((event) => {
     const gesture = mobileGestureRef.current;
@@ -790,7 +762,7 @@ export function App() {
       && elapsed <= MOBILE_TAP_MAX_MS) {
       act("rotate");
       if (navigator.vibrate) navigator.vibrate(6);
-    } else if (gesture.intent === "inward" && !gesture.softCommitted) {
+    } else if (gesture.intent === "flick") {
       const inwardVelocity = gesture.inwardDistance / elapsed;
       const isHardDrop = gesture.inwardDistance >= MOBILE_FLICK_MIN_PX
         && elapsed <= MOBILE_FLICK_MAX_MS
@@ -799,23 +771,18 @@ export function App() {
       if (isHardDrop) {
         act("drop");
         if (navigator.vibrate) navigator.vibrate(14);
-      } else {
-        commitMobileSoftDrop(gesture);
       }
     }
     if (mobileGestureRef.current !== gesture || gesture.stopped) return;
     gesture.released = true;
     const hasOrbitBacklog = gesture.intent === "orbit"
       && Math.abs(gesture.orbitAccumulator) >= MOBILE_GESTURE_STEP_PX;
-    const hasSoftDropBacklog = gesture.intent === "inward"
-      && gesture.softCommitted
-      && gesture.inwardDistance - gesture.softAppliedDistance >= MOBILE_GESTURE_STEP_PX;
-    if (hasOrbitBacklog || hasSoftDropBacklog) {
+    if (hasOrbitBacklog) {
       mobileGestureFrameRef.current = requestAnimationFrame(flushMobileGestureFrame);
     } else {
       clearMobileGesture(gesture.pointerId);
     }
-  }, [act, clearMobileGesture, commitMobileSoftDrop, flushMobileGestureFrame, processMobileGesturePoint]);
+  }, [act, clearMobileGesture, flushMobileGestureFrame, processMobileGesturePoint]);
 
   const cancelMobileGesture = useCallback((event) => {
     clearMobileGesture(event?.pointerId);
@@ -1280,7 +1247,7 @@ export function App() {
               ref={canvasRef}
               className="game-canvas"
               tabIndex="0"
-              aria-label="Circular Tetris board. On mobile, swipe along the ring to orbit, tap to rotate clockwise, drag inward to soft drop, or flick inward to hard drop."
+              aria-label="Circular Tetris board. On mobile, swipe along the ring to orbit, tap to rotate clockwise, hold to soft drop, or quickly swipe inward and release to hard drop."
               onPointerDown={beginBoardPointer}
               onPointerMove={moveBoardPointer}
               onPointerUp={finishBoardPointer}
@@ -1320,8 +1287,8 @@ export function App() {
                   <div className="gesture-guide-list" aria-label="Mobile gesture controls">
                     <div className="gesture-guide-row"><strong>Swipe arc</strong><span>Orbit</span></div>
                     <div className="gesture-guide-row"><strong>Tap</strong><span>Rotate clockwise</span></div>
-                    <div className="gesture-guide-row"><strong>Swipe in</strong><span>Soft drop</span></div>
-                    <div className="gesture-guide-row is-hard-drop"><strong>Flick in</strong><span>Hard drop</span></div>
+                    <div className="gesture-guide-row"><strong>Hold</strong><span>Soft drop</span></div>
+                    <div className="gesture-guide-row is-hard-drop"><strong>Quick swipe in</strong><span>Hard drop</span></div>
                   </div>
                   <small>{gestureGuide.source === "first" ? "Tap outside to start" : "Tap outside to return · closes after 15 seconds"}</small>
                 </section>

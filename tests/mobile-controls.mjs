@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
 const url = process.env.MOBILE_TEST_URL ?? "http://127.0.0.1:4173";
-const GUIDE_KEY = "radial-tetris-mobile-gesture-guide-v1";
+const GUIDE_KEY = "radial-tetris-mobile-gesture-guide-v2";
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
   viewport: { width: 390, height: 844 },
@@ -149,7 +149,7 @@ try {
   assert.deepEqual((await snapshot()).active, firstGuideState.active, "the active piece must freeze behind onboarding");
   assert.deepEqual(
     await page.locator(".gesture-guide-row").allTextContents(),
-    ["Swipe arcOrbit", "TapRotate clockwise", "Swipe inSoft drop", "Flick inHard drop"],
+    ["Swipe arcOrbit", "TapRotate clockwise", "HoldSoft drop", "Quick swipe inHard drop"],
   );
   await page.locator(".gesture-guide-card").click({ position: { x: 20, y: 20 } });
   assert.equal(await page.locator("#mobile-gesture-guide").count(), 1, "taps inside the guide must not dismiss it");
@@ -181,6 +181,25 @@ try {
   assert.equal(rootScrolling.htmlOverflowY, "auto");
   assert.equal(rootScrolling.bodyOverflowY, "auto");
   assert.equal(rootScrolling.htmlOverscrollY, "auto");
+  const fieldFidelity = await page.locator(".game-canvas").evaluate((canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      cssWidth: rect.width,
+      renderScale: canvas.width / rect.width,
+      shellUserSelect: getComputedStyle(document.querySelector(".game-shell")).userSelect,
+      labelUserSelect: getComputedStyle(document.querySelector(".frame-label")).userSelect,
+      labelPointerEvents: getComputedStyle(document.querySelector(".frame-label")).pointerEvents,
+      buttonPointerEvents: getComputedStyle(document.querySelector("#mobile-pause")).pointerEvents,
+      linkPointerEvents: getComputedStyle(document.querySelector(".footer-line a")).pointerEvents,
+    };
+  });
+  assert.ok(fieldFidelity.cssWidth >= 386, `the 390px phone field must reach the viewport edges: ${JSON.stringify(fieldFidelity)}`);
+  assert.equal(fieldFidelity.renderScale, 3, "DPR-3 phones must receive a native 3× canvas backing store");
+  assert.equal(fieldFidelity.shellUserSelect, "none");
+  assert.equal(fieldFidelity.labelUserSelect, "none");
+  assert.equal(fieldFidelity.labelPointerEvents, "none");
+  assert.equal(fieldFidelity.buttonPointerEvents, "auto");
+  assert.equal(fieldFidelity.linkPointerEvents, "auto");
 
   // Tap is clockwise-only and exactly one turn.
   await startFresh();
@@ -188,6 +207,13 @@ try {
   await tapBoard(10);
   const tapAfter = await snapshot();
   assert.equal(tapAfter.active.rotation, (tapBefore.active.rotation + 1) % 4, "a board tap must rotate clockwise once");
+  const hesitantBefore = await snapshot();
+  const hesitantGeometry = await canvasGeometry();
+  const hesitantPoint = { x: hesitantGeometry.cx + hesitantGeometry.radius, y: hesitantGeometry.cy };
+  await dispatch(".game-canvas", "pointerdown", 13, hesitantPoint);
+  await page.waitForTimeout(270);
+  await dispatch(".game-canvas", "pointerup", 13, hesitantPoint);
+  assert.deepEqual((await snapshot()).active, hesitantBefore.active, "a hesitant press must neither rotate nor nudge before the hold threshold");
 
   // Tangential swipes orbit relatively in both directions in 22px steps.
   await startFresh();
@@ -199,20 +225,42 @@ try {
   const counterclockwiseEnd = (await snapshot()).active.sector;
   assert.equal((counterclockwiseEnd - clockwiseEnd + 16) % 16, 14, "counterclockwise arc should apply two reverse steps");
 
-  // Deliberate inward motion converts to stepped soft-drop commands.
+  // Soft drop belongs only to a deliberate stationary hold.
   await startFresh();
   const softGeometry = await canvasGeometry();
   const softStart = { x: softGeometry.cx + softGeometry.radius, y: softGeometry.cy };
-  const softEnd = { x: softStart.x - 50, y: softStart.y };
   const softBefore = await snapshot();
   await dispatch(".game-canvas", "pointerdown", 20, softStart);
-  await page.waitForTimeout(130);
-  await dispatch(".game-canvas", "pointermove", 20, softEnd);
-  await page.waitForTimeout(30);
-  await dispatch(".game-canvas", "pointerup", 20, softEnd);
+  await page.waitForTimeout(360);
+  await dispatch(".game-canvas", "pointerup", 20, softStart);
   const softAfter = await snapshot();
-  assert.equal(softAfter.score - softBefore.score, 2, "50px of deliberate inward drag must apply two rewarded soft steps");
-  assert.equal(softAfter.active.ring, softBefore.active.ring - 2);
+  assert.equal(softAfter.score - softBefore.score, 1, "the first hold nudge must wait for deliberate intent");
+  assert.equal(softAfter.active.ring, softBefore.active.ring - 1);
+
+  await startFresh();
+  const repeatGeometry = await canvasGeometry();
+  const repeatPoint = { x: repeatGeometry.cx + repeatGeometry.radius, y: repeatGeometry.cy };
+  const repeatBefore = await snapshot();
+  await dispatch(".game-canvas", "pointerdown", 22, repeatPoint);
+  await page.waitForTimeout(570);
+  await dispatch(".game-canvas", "pointerup", 22, repeatPoint);
+  const repeatAfter = await snapshot();
+  assert.ok(repeatAfter.score - repeatBefore.score >= 3, "continuing the hold must repeat soft-drop steps");
+  assert.equal(repeatBefore.active.ring - repeatAfter.active.ring, repeatAfter.score - repeatBefore.score);
+
+  // A slow inward swipe is ignored instead of becoming an accidental nudge.
+  await startFresh();
+  const slowGeometry = await canvasGeometry();
+  const slowStart = { x: slowGeometry.cx + slowGeometry.radius, y: slowGeometry.cy };
+  const slowEnd = { x: slowStart.x - 50, y: slowStart.y };
+  const slowBefore = await snapshot();
+  await dispatch(".game-canvas", "pointerdown", 23, slowStart);
+  await page.waitForTimeout(200);
+  await dispatch(".game-canvas", "pointermove", 23, slowEnd);
+  await page.waitForTimeout(100);
+  await dispatch(".game-canvas", "pointerup", 23, slowEnd);
+  assert.deepEqual((await snapshot()).active, slowBefore.active, "slow inward movement must not rotate or drop the piece");
+  assert.equal((await snapshot()).score, slowBefore.score);
 
   // A qualifying inward flick hard-drops once and cannot spill into the next piece.
   await startFresh();
@@ -282,50 +330,54 @@ try {
   await startFresh();
   const cancelGeometry = await canvasGeometry();
   const cancelStart = { x: cancelGeometry.cx + cancelGeometry.radius, y: cancelGeometry.cy };
-  const cancelCandidate = { x: cancelStart.x - 30, y: cancelStart.y };
   const blurBefore = await snapshot();
   await dispatch(".game-canvas", "pointerdown", 60, cancelStart);
-  await dispatch(".game-canvas", "pointermove", 60, cancelCandidate);
+  await page.waitForTimeout(200);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await page.waitForTimeout(220);
-  await dispatch("body", "pointerup", 60, cancelCandidate);
-  assert.deepEqual((await snapshot()).active, blurBefore.active, "blur must discard a buffered hard-drop candidate");
+  await page.waitForTimeout(180);
+  await dispatch("body", "pointerup", 60, cancelStart);
+  assert.deepEqual((await snapshot()).active, blurBefore.active, "blur must cancel the pending long-hold nudge");
 
   const pauseBefore = await snapshot();
   await dispatch(".game-canvas", "pointerdown", 61, cancelStart);
-  await dispatch(".game-canvas", "pointermove", 61, cancelCandidate);
+  await page.waitForTimeout(200);
   await page.locator("#mobile-pause").click();
-  await dispatch("body", "pointerup", 61, cancelCandidate);
+  await page.waitForTimeout(180);
+  await dispatch("body", "pointerup", 61, cancelStart);
   assert.equal((await snapshot()).mode, "paused");
   assert.deepEqual((await snapshot()).active, pauseBefore.active, "pause must cancel buffered mobile input");
   await page.getByRole("button", { name: "Resume" }).click();
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === "playing");
 
   await dispatch(".game-canvas", "pointerdown", 62, cancelStart);
-  await dispatch(".game-canvas", "pointermove", 62, cancelCandidate);
+  await page.waitForTimeout(200);
   await page.locator("#mobile-new-game").click();
   const restartState = await snapshot();
-  await dispatch("body", "pointerup", 62, cancelCandidate);
+  await page.waitForTimeout(180);
+  await dispatch("body", "pointerup", 62, cancelStart);
   await page.waitForTimeout(220);
   assert.deepEqual((await snapshot()).active, restartState.active, "restart must prevent the previous gesture from reaching the new piece");
   assert.equal((await snapshot()).score, restartState.score);
 
-  // Piece-lock cancellation prevents a long drag from carrying into its successor.
+  // Piece-lock cancellation prevents a held nudge from carrying into its successor.
   await startFresh();
   const lockGeometry = await canvasGeometry();
-  const lockStart = { x: lockGeometry.right + 34, y: lockGeometry.cy };
-  const lockEnd = { x: lockGeometry.cx, y: lockGeometry.cy };
+  const lockStart = { x: lockGeometry.cx + lockGeometry.radius, y: lockGeometry.cy };
   await dispatch(".game-canvas", "pointerdown", 70, lockStart);
-  await page.waitForTimeout(130);
-  await dispatch(".game-canvas", "pointermove", 70, lockEnd);
-  await page.waitForTimeout(100);
-  const locked = await snapshot();
-  assert.ok(locked.occupiedByRing.some((count) => count > 0), "a long deliberate drag must eventually lock the piece");
+  let locked = null;
+  for (let elapsed = 0; elapsed < 1_700; elapsed += 40) {
+    await page.waitForTimeout(40);
+    const current = await snapshot();
+    if (current.occupiedByRing.some((count) => count > 0)) {
+      locked = current;
+      break;
+    }
+  }
+  assert.ok(locked, "a continued long hold must eventually lock the piece");
   const successor = JSON.stringify(locked.active);
   const lockedScore = locked.score;
-  await dispatch(".game-canvas", "pointermove", 70, { x: lockGeometry.cx - 60, y: lockGeometry.cy });
-  await dispatch("body", "pointerup", 70, { x: lockGeometry.cx - 60, y: lockGeometry.cy });
   await page.waitForTimeout(180);
+  await dispatch("body", "pointerup", 70, lockStart);
   assert.equal(JSON.stringify((await snapshot()).active), successor, "piece-boundary cancellation must protect the successor");
   assert.equal((await snapshot()).score, lockedScore);
 
