@@ -463,6 +463,7 @@ export function App() {
     if (gameRef.current.mode !== "playing") return;
     event.preventDefault();
     const target = event.currentTarget;
+    const activeAtPress = gameRef.current.active;
     clearMobileRepeat(event.pointerId);
     try {
       target.setPointerCapture?.(event.pointerId);
@@ -472,17 +473,17 @@ export function App() {
     target.dataset.pressed = "true";
     act(action);
     if (navigator.vibrate) navigator.vibrate(action === "drop" ? 14 : 6);
-    if (!repeat) return;
+    if (!repeat || gameRef.current.active !== activeAtPress) return;
 
-    const state = { pointerId: event.pointerId, target, timerId: 0, stopped: false };
+    const state = { pointerId: event.pointerId, target, active: activeAtPress, timerId: 0, stopped: false };
     const tick = () => {
       if (state.stopped) return;
-      if (gameRef.current.mode !== "playing") {
+      if (gameRef.current.mode !== "playing" || gameRef.current.active !== state.active) {
         clearMobileRepeatState(state);
         return;
       }
       act(action);
-      if (state.stopped || gameRef.current.mode !== "playing") {
+      if (state.stopped || gameRef.current.mode !== "playing" || gameRef.current.active !== state.active) {
         clearMobileRepeatState(state);
         return;
       }
@@ -934,9 +935,11 @@ export function App() {
                 onPointerCancel={endMobilePull}
                 onLostPointerCapture={endMobilePull}
               >
-                <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true"><span className="mobile-polar-icon">↻</span></span>
-                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span></span></span>
-                <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true"><span className="mobile-polar-icon">↻</span></span>
+                <span className="mobile-polar-visual">
+                  <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true"><span className="mobile-polar-end-hit-area" /><span className="mobile-polar-icon">↻</span></span>
+                  <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span></span></span>
+                  <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true"><span className="mobile-polar-end-hit-area" /><span className="mobile-polar-icon">↻</span></span>
+                </span>
               </button>
               <button
                 id="mobile-nudge"
@@ -949,8 +952,10 @@ export function App() {
                 onPointerCancel={endMobileControl}
                 onLostPointerCapture={endMobileControl}
               >
-                <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Nudge</span></span></span>
-                <span className="mobile-polar-end mobile-polar-down" aria-hidden="true">↓</span>
+                <span className="mobile-polar-visual">
+                  <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Nudge</span></span></span>
+                  <span className="mobile-polar-end mobile-polar-down" aria-hidden="true"><span className="mobile-polar-end-hit-area" />↓</span>
+                </span>
               </button>
               <div className="mobile-orbit-rail" role="group" aria-label="Alternate orbit controls">
                 <span className="mobile-orbit-rail-shadow"/>

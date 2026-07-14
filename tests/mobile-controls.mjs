@@ -56,6 +56,40 @@ async function dispatch(selector, type, pointerId, options = {}) {
   }, { targetSelector: selector, eventType: type, id: pointerId, eventOptions: options });
 }
 
+async function sampledHitBounds(selector, targetSelector = selector) {
+  return page.evaluate(({ selector: elementSelector, targetSelector: expectedTargetSelector }) => {
+    const element = document.querySelector(elementSelector);
+    const target = document.querySelector(expectedTargetSelector);
+    const rect = element.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (let y = Math.max(0, Math.floor(rect.top - 28)); y <= Math.min(innerHeight - 1, Math.ceil(rect.bottom + 28)); y += 2) {
+      for (let x = Math.max(0, Math.floor(rect.left - 28)); x <= Math.min(innerWidth - 1, Math.ceil(rect.right + 28)); x += 2) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit === target || hit?.closest?.(expectedTargetSelector) === target) {
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    return {
+      visualWidth: rect.width,
+      visualHeight: rect.height,
+      targetWidth: targetRect.width,
+      targetHeight: targetRect.height,
+      hitWidth: maxX - minX,
+      hitHeight: maxY - minY,
+    };
+  }, { selector, targetSelector });
+}
+
 try {
   await page.goto(`${url}/?mobile-test=idle-loop`);
   await page.waitForTimeout(150);
@@ -81,6 +115,53 @@ try {
     await page.evaluate((before) => window.__mobileTestRafCount - before <= 1, pausedFrames),
     "paused mode must suspend the game RAF loop",
   );
+
+  await startFresh();
+  const nudgeStart = await snapshot();
+  await dispatch("#mobile-nudge", "pointerdown", 2);
+  await page.waitForTimeout(180);
+  await dispatch("#mobile-nudge", "pointerup", 2);
+  const nudgeAfterShortHold = await snapshot();
+  assert.equal(nudgeAfterShortHold.score - nudgeStart.score, 1, "a short Nudge hold must remain a single deliberate step");
+
+  await startFresh();
+  await dispatch("#mobile-nudge", "pointerdown", 3);
+  let lockedState = null;
+  for (let elapsed = 0; elapsed < 1800; elapsed += 25) {
+    await page.waitForTimeout(25);
+    const current = await snapshot();
+    if (current.occupiedByRing.some((count) => count > 0)) {
+      lockedState = current;
+      break;
+    }
+  }
+  assert.ok(lockedState, "a held Nudge must eventually lock the current piece");
+  const lockedPiece = JSON.stringify(lockedState.active);
+  const lockedScore = lockedState.score;
+  const vectorReadout = await page.locator(".vector-readout").textContent();
+  assert.match(vectorReadout, new RegExp(`Ring ${lockedState.active.ring + 1} · ${lockedState.active.type}-form`), "landing must redraw the newly spawned piece immediately");
+  await page.waitForTimeout(180);
+  const afterLockHold = await snapshot();
+  assert.equal(JSON.stringify(afterLockHold.active), lockedPiece, "a Nudge hold must not spill into the next piece");
+  assert.equal(afterLockHold.score, lockedScore, "the next piece must not receive held Nudge score");
+  await dispatch("#mobile-nudge", "pointerup", 3);
+
+  const nudgeHitBounds = await sampledHitBounds("#mobile-nudge .mobile-polar-visual", "#mobile-nudge");
+  assert.ok(nudgeHitBounds.hitWidth >= nudgeHitBounds.visualWidth + 16, `Nudge must include horizontal thumb hit slop: ${JSON.stringify(nudgeHitBounds)}`);
+  assert.ok(nudgeHitBounds.hitHeight >= nudgeHitBounds.visualHeight + 16, `Nudge must include vertical thumb hit slop: ${JSON.stringify(nudgeHitBounds)}`);
+  const lowerSpinPoleHitBounds = await sampledHitBounds("[data-spin-pole-action=rotate]", "[data-spin-pole-action=rotate]");
+  assert.ok(lowerSpinPoleHitBounds.hitWidth >= 48, "Spin poles must expose at least a 48px touch target");
+  assert.ok(lowerSpinPoleHitBounds.hitHeight >= 48, "Spin poles must expose at least a 48px touch target");
+
+  await startFresh();
+  const nudgeVisual = page.locator("#mobile-nudge .mobile-polar-visual");
+  const nudgeRestingTransform = await nudgeVisual.evaluate((element) => getComputedStyle(element).transform);
+  await dispatch("#mobile-nudge", "pointerdown", 4);
+  const nudgePressedTransform = await nudgeVisual.evaluate((element) => getComputedStyle(element).transform);
+  assert.notEqual(nudgePressedTransform, nudgeRestingTransform, "Nudge must provide immediate physical press feedback");
+  await dispatch("#mobile-nudge", "pointerup", 4);
+  await page.waitForTimeout(70);
+  assert.equal(await nudgeVisual.evaluate((element) => getComputedStyle(element).transform), nudgeRestingTransform, "Nudge press feedback must release promptly");
 
   await startFresh();
   await failPointerCapture("#mobile-orbit-right");
