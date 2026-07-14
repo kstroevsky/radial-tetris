@@ -91,9 +91,9 @@ export function Leaderboard({ open, onClose, playerName, onEditName, refreshKey 
           </table>
           {state.status === "loading" && <p className="leaderboard-empty">Receiving telemetry…</p>}
           {state.status === "error" && <p className="leaderboard-empty dialog-error" role="alert">{state.error}</p>}
-          {state.status === "ready" && state.players.length === 0 && <p className="leaderboard-empty">No completed games yet. Your first result sets the field.</p>}
+          {state.status === "ready" && state.players.length === 0 && <p className="leaderboard-empty">No games recorded yet. Your first result sets the field.</p>}
         </div>
-        <p className="leaderboard-note">Time counts active play in completed games. Pauses and hidden tabs are excluded.</p>
+        <p className="leaderboard-note">Average uses games with 1+ ring. Time includes every game; pauses and hidden tabs are excluded.</p>
       </section>
     </div>
   );

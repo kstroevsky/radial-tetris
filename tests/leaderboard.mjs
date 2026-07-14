@@ -25,9 +25,23 @@ const seedResultResponse = await fetch(`${baseUrl}/api/results`, {
     score: 600,
     playMs: 60000,
     difficulty: "normal",
+    endedReason: "gameover",
   }),
 });
 assert.equal(seedResultResponse.status, 201);
+const seedZeroRingResponse = await fetch(`${baseUrl}/api/results`, {
+  method: "POST",
+  headers: { "content-type": "application/json", cookie: seedCookie },
+  body: JSON.stringify({
+    gameId: crypto.randomUUID(),
+    rings: 0,
+    score: 8,
+    playMs: 120000,
+    difficulty: "normal",
+    endedReason: "restart",
+  }),
+});
+assert.equal(seedZeroRingResponse.status, 201);
 
 await mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -63,7 +77,10 @@ try {
   await page.getByRole("button", { name: "Leaderboard" }).click();
   const leaderboard = page.getByRole("dialog", { name: "Leaderboard" });
   await leaderboard.waitFor();
-  await page.getByText(seedName, { exact: true }).waitFor();
+  const seedRow = leaderboard.locator("tbody tr").filter({ hasText: seedName }).first();
+  await seedRow.waitFor();
+  assert.equal(await seedRow.locator("td").nth(2).textContent(), "4.00", "zero-ring games must not lower the average");
+  assert.equal(await seedRow.locator("td").last().textContent(), "2", "all games must remain in the game count");
   await page.screenshot({ path: `${outputDir}/mobile-leaderboard.png`, fullPage: true });
   await leaderboard.getByRole("tab", { name: "Average" }).click();
   await leaderboard.getByRole("tab", { name: "Time" }).click();
@@ -75,10 +92,21 @@ try {
   await nameDialog.waitFor({ state: "hidden" });
 
   await page.getByRole("button", { name: /Normal/ }).click();
+  await page.evaluate(() => window.advanceTime(2000));
+  const restartResponsePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/results"
+  ));
+  await page.locator("#mobile-new-game").click();
+  assert.equal((await restartResponsePromise).status(), 201);
+  assert.equal(resultRequests, 1, "a short restarted game should submit exactly one result request");
+  const restartedState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  assert.equal(restartedState.mode, "playing");
+  assert.ok(restartedState.playTimeMs < 100, "a restart should begin a fresh active-time counter");
+
   await page.evaluate(() => window.advanceTime(120000));
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === "gameover");
   await page.getByText("Leaderboard updated", { exact: true }).waitFor();
-  assert.equal(resultRequests, 1, "one completed game should submit exactly one result request");
+  assert.equal(resultRequests, 2, "each restarted or completed game should submit exactly one result request");
 
   const gameState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   assert.equal(gameState.mode, "gameover");
@@ -89,7 +117,24 @@ try {
   await leaderboard.waitFor();
   const playerRow = leaderboard.locator("tbody tr").filter({ hasText: playerName }).first();
   await playerRow.waitFor();
-  assert.equal(await playerRow.locator("td").last().textContent(), "1");
+  assert.equal(await playerRow.locator("td").last().textContent(), "2");
+
+  await leaderboard.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Recalibrate" }).click();
+  await page.evaluate(() => window.advanceTime(2000));
+  const requestsBeforeExit = resultRequests;
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".player-callsign").waitFor({ state: "attached", timeout: 10000 });
+  await page.locator(".leaderboard-trigger").click();
+  await leaderboard.waitFor();
+  const reloadedPlayerRow = leaderboard.locator("tbody tr").filter({ hasText: playerName }).first();
+  await reloadedPlayerRow.waitFor();
+  await page.waitForFunction((name) => {
+    const row = [...document.querySelectorAll("tbody tr")].find((candidate) => candidate.textContent.includes(name));
+    return row?.lastElementChild?.textContent === "3";
+  }, playerName, { timeout: 10000 });
+  const exitRequests = resultRequests - requestsBeforeExit;
+  assert.ok(exitRequests >= 1 && exitRequests <= 2, "page exit should send once, with at most one idempotent recovery retry");
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: `${outputDir}/desktop-leaderboard.png`, fullPage: true });

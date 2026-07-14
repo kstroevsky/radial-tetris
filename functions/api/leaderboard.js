@@ -24,8 +24,9 @@ export async function onRequestGet({ request, env }) {
       SELECT
         name,
         games_count,
+        ring_games_count,
         max_rings,
-        ROUND(CAST(total_rings AS REAL) / NULLIF(games_count, 0), 2) AS average_rings,
+        ROUND(CAST(total_rings AS REAL) / NULLIF(ring_games_count, 0), 2) AS average_rings,
         total_play_ms,
         best_score,
         updated_at

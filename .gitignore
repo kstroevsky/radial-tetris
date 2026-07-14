@@ -3,3 +3,5 @@ node_modules
 .codegraph
 .wrangler
 wrangler.local.jsonc
+.playwright-cli
+output

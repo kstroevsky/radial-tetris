@@ -1,6 +1,7 @@
 const PLAYER_COOKIE = "rt_player";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DIFFICULTIES = new Set(["easy", "normal", "hard"]);
+const ENDED_REASONS = new Set(["gameover", "restart", "pagehide"]);
 const MAX_BODY_BYTES = 2048;
 
 function json(data, init = {}) {
@@ -42,13 +43,15 @@ async function readJson(request) {
 export function validateGameResult(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const { gameId, rings, score, playMs, difficulty } = value;
+  const endedReason = value.endedReason ?? "gameover";
   if (!UUID_PATTERN.test(gameId ?? "")) return null;
   if (!Number.isInteger(rings) || rings < 0 || rings > 100000) return null;
   if (!Number.isInteger(score) || score < 0 || score > 1000000000) return null;
   if (!Number.isInteger(playMs) || playMs < 0 || playMs > 86400000) return null;
   if (!DIFFICULTIES.has(difficulty)) return null;
+  if (!ENDED_REASONS.has(endedReason)) return null;
   if (rings > 20 + Math.ceil(playMs / 500)) return null;
-  return { gameId, rings, score, playMs, difficulty };
+  return { gameId, rings, score, playMs, difficulty, endedReason };
 }
 
 export async function onRequestPost({ request, env }) {
@@ -65,11 +68,11 @@ export async function onRequestPost({ request, env }) {
   try {
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO game_results (game_id, player_id, rings, score, play_ms, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).bind(result.gameId, playerId, result.rings, result.score, result.playMs, result.difficulty, now),
+        "INSERT INTO game_results (game_id, player_id, rings, score, play_ms, difficulty, ended_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(result.gameId, playerId, result.rings, result.score, result.playMs, result.difficulty, result.endedReason, now),
       env.DB.prepare(
-        "UPDATE players SET games_count = games_count + 1, total_rings = total_rings + ?, max_rings = MAX(max_rings, ?), total_play_ms = total_play_ms + ?, best_score = MAX(best_score, ?), updated_at = ? WHERE id = ?",
-      ).bind(result.rings, result.rings, result.playMs, result.score, now, playerId),
+        "UPDATE players SET games_count = games_count + 1, ring_games_count = ring_games_count + ?, total_rings = total_rings + ?, max_rings = MAX(max_rings, ?), total_play_ms = total_play_ms + ?, best_score = MAX(best_score, ?), updated_at = ? WHERE id = ?",
+      ).bind(result.rings > 0 ? 1 : 0, result.rings, result.rings, result.playMs, result.score, now, playerId),
     ]);
     return json({ accepted: true, duplicate: false }, { status: 201 });
   } catch (error) {

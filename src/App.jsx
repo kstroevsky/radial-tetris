@@ -24,6 +24,12 @@ import {
 import { Leaderboard } from "./components/Leaderboard.jsx";
 import { PlayerNameDialog } from "./components/PlayerNameDialog.jsx";
 import { getProfile, saveProfile, submitGameResult } from "./leaderboardApi.js";
+import {
+  gameResultFrom,
+  pendingGameResults,
+  queueGameResult,
+  removePendingGameResult,
+} from "./resultOutbox.js";
 
 const TAU = Math.PI * 2;
 const MOBILE_DIAGONAL_PULL_AXIS = Object.freeze({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
@@ -353,7 +359,7 @@ export function App() {
   const clearMobileInputsRef = useRef(() => {});
   const refreshGameLoopRef = useRef(() => {});
   const previousModeRef = useRef("ready");
-  const submittedGameIdsRef = useRef(new Set());
+  const finalizedGameIdsRef = useRef(new Set());
   if (!gameRef.current) {
     gameRef.current = createGame();
     try {
@@ -411,6 +417,56 @@ export function App() {
     }
   }, [hud.best]);
 
+  useEffect(() => {
+    if (profile.status !== "ready") return undefined;
+    let active = true;
+
+    const flushPendingResults = async () => {
+      let savedAny = false;
+      for (const result of pendingGameResults()) {
+        try {
+          await submitGameResult(result);
+          removePendingGameResult(result.gameId);
+          savedAny = true;
+        } catch {
+          break;
+        }
+      }
+      if (active && savedAny) setLeaderboardRefreshKey((value) => value + 1);
+    };
+
+    void flushPendingResults();
+    return () => { active = false; };
+  }, [profile.status]);
+
+  const deliverGameResult = useCallback((result, { silent = false } = {}) => {
+    queueGameResult(result);
+    if (profile.status !== "ready") {
+      if (!silent) setResultStatus("offline");
+      return Promise.resolve(false);
+    }
+
+    if (!silent) setResultStatus("submitting");
+    return submitGameResult(result)
+      .then(() => {
+        removePendingGameResult(result.gameId);
+        if (!silent) setResultStatus("saved");
+        setLeaderboardRefreshKey((value) => value + 1);
+        return true;
+      })
+      .catch(() => {
+        if (!silent) setResultStatus("error");
+        return false;
+      });
+  }, [profile.status]);
+
+  const finalizeGame = useCallback((game, endedReason, options) => {
+    const result = gameResultFrom(game, endedReason);
+    if (!result || finalizedGameIdsRef.current.has(result.gameId)) return Promise.resolve(false);
+    finalizedGameIdsRef.current.add(result.gameId);
+    return deliverGameResult(result, options);
+  }, [deliverGameResult]);
+
   const act = useCallback((action) => {
     const game = gameRef.current;
     const activeBefore = game.active;
@@ -424,14 +480,19 @@ export function App() {
     if (action === "down") changed = stepInward(game, true);
     if (action === "drop") changed = hardDrop(game) >= 0;
     if (action === "pause") { pauseGame(game); changed = true; }
-    if (action === "restart") { resetGame(game); setResultStatus("idle"); changed = true; }
+    if (action === "restart") {
+      void finalizeGame(game, "restart");
+      resetGame(game);
+      setResultStatus("idle");
+      changed = true;
+    }
     if (game.active !== activeBefore || game.mode !== modeBefore) changed = true;
     if (changed) {
       syncHud(action === "restart" || game.active !== activeBefore);
       redraw();
       refreshGameLoopRef.current();
     }
-  }, [redraw, syncHud]);
+  }, [finalizeGame, redraw, syncHud]);
 
   const clearMobileRepeatState = useCallback((repeat) => {
     if (!repeat || repeat.stopped) return;
@@ -620,6 +681,7 @@ export function App() {
     }
     clearMobileInputsRef.current();
     const gameIdBefore = gameRef.current.gameId;
+    if (gameRef.current.mode === "gameover") void finalizeGame(gameRef.current, "gameover");
     if (gameRef.current.mode === "ready") {
       setDifficulty(gameRef.current, typeof difficulty === "string" ? difficulty : "normal");
     }
@@ -629,7 +691,7 @@ export function App() {
     redraw();
     refreshGameLoopRef.current();
     canvasRef.current?.focus();
-  }, [profile.status, redraw, syncHud]);
+  }, [finalizeGame, profile.status, redraw, syncHud]);
 
   const savePlayerName = useCallback(async (name) => {
     const { player } = await saveProfile(name);
@@ -652,29 +714,30 @@ export function App() {
     previousModeRef.current = hud.mode;
     if (previousMode === "gameover" || hud.mode !== "gameover") return;
 
-    const game = gameRef.current;
-    if (submittedGameIdsRef.current.has(game.gameId)) return;
-    submittedGameIdsRef.current.add(game.gameId);
+    void finalizeGame(gameRef.current, "gameover");
+  }, [finalizeGame, hud.mode]);
 
-    if (profile.status !== "ready") {
-      setResultStatus("offline");
-      return;
-    }
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const game = gameRef.current;
+      if (document.visibilityState === "hidden") {
+        const checkpoint = gameResultFrom(game, "pagehide");
+        if (checkpoint && !finalizedGameIdsRef.current.has(checkpoint.gameId)) queueGameResult(checkpoint);
+      } else if (!finalizedGameIdsRef.current.has(game.gameId)) {
+        removePendingGameResult(game.gameId);
+      }
+    };
+    const onPageHide = (event) => {
+      if (!event.persisted) void finalizeGame(gameRef.current, "pagehide", { silent: true });
+    };
 
-    setResultStatus("submitting");
-    submitGameResult({
-      gameId: game.gameId,
-      rings: game.ringsCleared,
-      score: game.score,
-      playMs: Math.round(game.playTimeMs),
-      difficulty: game.difficulty,
-    })
-      .then(() => {
-        setResultStatus("saved");
-        setLeaderboardRefreshKey((value) => value + 1);
-      })
-      .catch(() => setResultStatus("error"));
-  }, [hud.mode, profile.status]);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [finalizeGame]);
 
   const toggleFullscreen = useCallback(async () => {
     try {

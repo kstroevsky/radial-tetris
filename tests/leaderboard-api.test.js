@@ -7,6 +7,7 @@ import { onRequestPost as saveResult, validateGameResult } from "../functions/ap
 
 const PLAYER_ID = "123e4567-e89b-42d3-a456-426614174000";
 const GAME_ID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+const ZERO_RING_GAME_ID = "9ad5e4c8-4402-4dd5-a125-9e8903e6722d";
 
 function jsonRequest(url, body, cookie) {
   return new Request(url, {
@@ -48,7 +49,14 @@ class ProfileDatabase {
 
 class ResultsDatabase {
   constructor() {
-    this.players = new Map([[PLAYER_ID, { games: 0, totalRings: 0, maxRings: 0, playMs: 0, bestScore: 0 }]]);
+    this.players = new Map([[PLAYER_ID, {
+      games: 0,
+      ringGames: 0,
+      totalRings: 0,
+      maxRings: 0,
+      playMs: 0,
+      bestScore: 0,
+    }]]);
     this.gameIds = new Set();
     this.batchSizes = [];
   }
@@ -63,12 +71,13 @@ class ResultsDatabase {
     if (this.gameIds.has(insert.values[0])) throw new Error("UNIQUE constraint failed: game_results.game_id");
     if (!this.players.has(insert.values[1])) throw new Error("FOREIGN KEY constraint failed");
     this.gameIds.add(insert.values[0]);
-    const player = this.players.get(update.values[5]);
+    const player = this.players.get(update.values[6]);
     player.games += 1;
-    player.totalRings += update.values[0];
-    player.maxRings = Math.max(player.maxRings, update.values[1]);
-    player.playMs += update.values[2];
-    player.bestScore = Math.max(player.bestScore, update.values[3]);
+    player.ringGames += update.values[0];
+    player.totalRings += update.values[1];
+    player.maxRings = Math.max(player.maxRings, update.values[2]);
+    player.playMs += update.values[3];
+    player.bestScore = Math.max(player.bestScore, update.values[4]);
     return [{ success: true }, { success: true }];
   }
 }
@@ -104,10 +113,20 @@ test("normalizes player names and persists an anonymous cookie profile", async (
 });
 
 test("validates results and aggregates a game id only once", async () => {
-  const valid = { gameId: GAME_ID, rings: 12, score: 18450, playMs: 286400, difficulty: "normal" };
+  const valid = {
+    gameId: GAME_ID,
+    rings: 12,
+    score: 18450,
+    playMs: 286400,
+    difficulty: "normal",
+    endedReason: "gameover",
+  };
   assert.deepEqual(validateGameResult(valid), valid);
+  const { endedReason: _reason, ...legacy } = valid;
+  assert.deepEqual(validateGameResult(legacy), valid);
   assert.equal(validateGameResult({ ...valid, rings: 999999 }), null);
   assert.equal(validateGameResult({ ...valid, difficulty: "nightmare" }), null);
+  assert.equal(validateGameResult({ ...valid, endedReason: "quit" }), null);
 
   const DB = new ResultsDatabase();
   const context = () => ({
@@ -124,9 +143,32 @@ test("validates results and aggregates a game id only once", async () => {
   assert.deepEqual(DB.batchSizes, [2, 2]);
   assert.deepEqual(DB.players.get(PLAYER_ID), {
     games: 1,
+    ringGames: 1,
     totalRings: 12,
     maxRings: 12,
     playMs: 286400,
+    bestScore: 18450,
+  });
+
+  const zeroRingResult = {
+    gameId: ZERO_RING_GAME_ID,
+    rings: 0,
+    score: 7,
+    playMs: 2400,
+    difficulty: "normal",
+    endedReason: "restart",
+  };
+  const zeroRingResponse = await saveResult({
+    request: jsonRequest("https://game.test/api/results", zeroRingResult, `rt_player=${PLAYER_ID}`),
+    env: { DB },
+  });
+  assert.equal(zeroRingResponse.status, 201);
+  assert.deepEqual(DB.players.get(PLAYER_ID), {
+    games: 2,
+    ringGames: 1,
+    totalRings: 12,
+    maxRings: 12,
+    playMs: 288800,
     bestScore: 18450,
   });
 });
@@ -152,6 +194,7 @@ test("uses only whitelisted leaderboard sort expressions", async () => {
     env: { DB },
   });
   assert.match(query, /ORDER BY total_play_ms DESC/);
+  assert.match(query, /NULLIF\(ring_games_count, 0\)/);
   assert.deepEqual(await response.json(), {
     sort: "time",
     players: [{ name: "Anna", gamesCount: 2, maxRings: 12, averageRings: 8.5, totalPlayMs: 300000, bestScore: 20000 }],
