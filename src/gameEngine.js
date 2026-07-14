@@ -1,5 +1,6 @@
 export const SECTORS = 16;
 export const RINGS = 10;
+export const RINGS_PER_LEVEL = 20;
 
 export const PIECES = {
   I: [[-1, 0], [0, 0], [1, 0], [2, 0]],
@@ -46,6 +47,10 @@ const TYPES = Object.keys(PIECES);
 
 function difficultyFor(game) {
   return DIFFICULTIES[game.difficulty] ?? DIFFICULTIES.normal;
+}
+
+export function levelForRings(ringsCleared) {
+  return Math.floor(Math.max(0, ringsCleared) / RINGS_PER_LEVEL) + 1;
 }
 
 export function makeBoard() {
@@ -277,7 +282,7 @@ function lockPiece(game) {
     game.message = "Piece stabilized";
   }
 
-  game.level = Math.floor(game.ringsCleared / 4) + 1;
+  game.level = levelForRings(game.ringsCleared);
   game.best = Math.max(game.best, game.score);
   game.active = null;
   spawnPiece(game);
