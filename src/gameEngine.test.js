@@ -9,7 +9,39 @@ import {
   hardDrop,
   levelForRings,
   makeBoard,
+  pauseGame,
+  resetGame,
+  updateGame,
 } from "./gameEngine.js";
+
+test("gives every game a new id and tracks active play time only", () => {
+  const game = createGame();
+  const firstId = game.gameId;
+
+  assert.match(firstId, /^[0-9a-f-]{36}$/i);
+  assert.equal(game.playTimeMs, 0);
+
+  game.mode = "playing";
+  updateGame(game, 0.25);
+  assert.equal(game.playTimeMs, 250);
+
+  pauseGame(game);
+  updateGame(game, 1);
+  assert.equal(game.playTimeMs, 250);
+
+  game.mode = "gameover";
+  updateGame(game, 1);
+  assert.equal(game.playTimeMs, 250);
+
+  game.mode = "playing";
+  game.score = 10;
+  game.difficulty = "hard";
+  game.active = null;
+  resetGame(game);
+  assert.notEqual(game.gameId, firstId);
+  assert.equal(game.playTimeMs, 0);
+  assert.equal(game.difficulty, "hard");
+});
 
 test("stretches the former 20-ring progression milestone to 100 rings", () => {
   assert.equal(levelForRings(0), 1);

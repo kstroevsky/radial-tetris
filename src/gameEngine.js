@@ -71,6 +71,8 @@ function takeType(bag) {
 export function createGame() {
   const bag = [];
   return {
+    gameId: crypto.randomUUID(),
+    playTimeMs: 0,
     mode: "ready",
     board: makeBoard(),
     active: null,
@@ -324,6 +326,7 @@ export function updateGame(game, deltaSeconds) {
   }
 
   if (game.mode !== "playing") return visualChanged;
+  game.playTimeMs += deltaSeconds * 1000;
   const difficulty = difficultyFor(game);
   const levelInterval = Math.max(0.115, 0.82 - (game.level - 1) * 0.07);
   const interval = Math.max(difficulty.minimumInterval, levelInterval * difficulty.intervalMultiplier);
@@ -349,6 +352,8 @@ export function gameSnapshot(game) {
   return {
     coordinateSystem: "polar grid; sector 0 begins at 12 o'clock and increases clockwise; ring 0 is nearest the core and ring 9 is the outer edge",
     mode: game.mode,
+    gameId: game.gameId,
+    playTimeMs: Math.round(game.playTimeMs),
     score: game.score,
     level: game.level,
     difficulty: game.difficulty,

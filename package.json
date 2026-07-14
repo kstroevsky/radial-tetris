@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test",
+    "test:leaderboard": "node tests/leaderboard.mjs",
     "test:mobile": "node tests/mobile-controls.mjs"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "vite": "6.4.2"
   },
   "devDependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "wrangler": "^4.110.0"
   }
 }

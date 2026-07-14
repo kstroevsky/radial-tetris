@@ -21,6 +21,9 @@ import {
   stepInward,
   updateGame,
 } from "./gameEngine.js";
+import { Leaderboard } from "./components/Leaderboard.jsx";
+import { PlayerNameDialog } from "./components/PlayerNameDialog.jsx";
+import { getProfile, saveProfile, submitGameResult } from "./leaderboardApi.js";
 
 const TAU = Math.PI * 2;
 const MOBILE_DIAGONAL_PULL_AXIS = Object.freeze({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
@@ -349,6 +352,8 @@ export function App() {
   const mobilePullsRef = useRef(new Map());
   const clearMobileInputsRef = useRef(() => {});
   const refreshGameLoopRef = useRef(() => {});
+  const previousModeRef = useRef("ready");
+  const submittedGameIdsRef = useRef(new Set());
   if (!gameRef.current) {
     gameRef.current = createGame();
     try {
@@ -362,6 +367,11 @@ export function App() {
     ...hudSnapshot(gameRef.current),
     integrity: ringIntegrity(gameRef.current),
   }));
+  const [profile, setProfile] = useState({ status: "loading", player: null });
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboardRefreshKey, setLeaderboardRefreshKey] = useState(0);
+  const [resultStatus, setResultStatus] = useState("idle");
 
   const syncHud = useCallback((updateIntegrity = true) => {
     const game = gameRef.current;
@@ -376,6 +386,24 @@ export function App() {
   const redraw = useCallback(() => drawScene(canvasRef.current, gameRef.current), []);
 
   useEffect(() => {
+    let active = true;
+    getProfile()
+      .then(({ player }) => {
+        if (!active) return;
+        if (player) {
+          setProfile({ status: "ready", player });
+        } else {
+          setProfile({ status: "needs-name", player: null });
+          setNameDialogOpen(true);
+        }
+      })
+      .catch(() => {
+        if (active) setProfile({ status: "offline", player: null });
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(BEST_SCORE_KEY, String(hud.best));
     } catch {
@@ -386,6 +414,7 @@ export function App() {
   const act = useCallback((action) => {
     const game = gameRef.current;
     const activeBefore = game.active;
+    const modeBefore = game.mode;
     let changed = false;
     if (action === "pause" || action === "restart") clearMobileInputsRef.current();
     if (action === "left") changed = moveAround(game, -1);
@@ -395,7 +424,8 @@ export function App() {
     if (action === "down") changed = stepInward(game, true);
     if (action === "drop") changed = hardDrop(game) >= 0;
     if (action === "pause") { pauseGame(game); changed = true; }
-    if (action === "restart") { resetGame(game); changed = true; }
+    if (action === "restart") { resetGame(game); setResultStatus("idle"); changed = true; }
+    if (game.active !== activeBefore || game.mode !== modeBefore) changed = true;
     if (changed) {
       syncHud(action === "restart" || game.active !== activeBefore);
       redraw();
@@ -582,14 +612,68 @@ export function App() {
   }, [clearMobileInputs, hud.mode]);
 
   const start = useCallback((difficulty = "normal") => {
+    if (profile.status === "loading") return;
+    if (profile.status === "needs-name") {
+      setNameDialogOpen(true);
+      return;
+    }
     clearMobileInputsRef.current();
-    if (gameRef.current.mode === "ready") setDifficulty(gameRef.current, difficulty);
+    const gameIdBefore = gameRef.current.gameId;
+    if (gameRef.current.mode === "ready") {
+      setDifficulty(gameRef.current, typeof difficulty === "string" ? difficulty : "normal");
+    }
     startGame(gameRef.current);
+    if (gameRef.current.gameId !== gameIdBefore) setResultStatus("idle");
     syncHud();
     redraw();
     refreshGameLoopRef.current();
     canvasRef.current?.focus();
-  }, [redraw, syncHud]);
+  }, [profile.status, redraw, syncHud]);
+
+  const savePlayerName = useCallback(async (name) => {
+    const { player } = await saveProfile(name);
+    setProfile({ status: "ready", player });
+    setNameDialogOpen(false);
+  }, []);
+
+  const editPlayerName = useCallback(() => {
+    setLeaderboardOpen(false);
+    setNameDialogOpen(true);
+  }, []);
+
+  const continueOffline = useCallback(() => {
+    setProfile({ status: "offline", player: null });
+    setNameDialogOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const previousMode = previousModeRef.current;
+    previousModeRef.current = hud.mode;
+    if (previousMode === "gameover" || hud.mode !== "gameover") return;
+
+    const game = gameRef.current;
+    if (submittedGameIdsRef.current.has(game.gameId)) return;
+    submittedGameIdsRef.current.add(game.gameId);
+
+    if (profile.status !== "ready") {
+      setResultStatus("offline");
+      return;
+    }
+
+    setResultStatus("submitting");
+    submitGameResult({
+      gameId: game.gameId,
+      rings: game.ringsCleared,
+      score: game.score,
+      playMs: Math.round(game.playTimeMs),
+      difficulty: game.difficulty,
+    })
+      .then(() => {
+        setResultStatus("saved");
+        setLeaderboardRefreshKey((value) => value + 1);
+      })
+      .catch(() => setResultStatus("error"));
+  }, [hud.mode, profile.status]);
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -670,6 +754,7 @@ export function App() {
     };
 
     const onKeyDown = (event) => {
+      if (document.querySelector("[data-game-input-blocking='true']")) return;
       const key = event.key.toLowerCase();
       const gameKeys = ["arrowleft", "arrowright", "arrowup", "arrowdown", " ", "enter", "a", "d", "w", "s", "x", "z", "p", "r", "f", "escape"];
       if (!gameKeys.includes(key)) return;
@@ -787,6 +872,12 @@ export function App() {
     : hud.mode === "paused"
       ? { kicker: "Simulation held", title: "Orbit paused", body: "Your radial stack is stable. Resume when ready.", cta: "Resume" }
       : { kicker: "A circular falling-block experiment", title: "Tetris, bent into orbit.", body: "Pieces enter from any angle. Orbit, rotate, and drive them inward to close complete rings around the core.", cta: "Acquire vector" };
+  const resultStatusCopy = {
+    submitting: "Transmitting result…",
+    saved: "Leaderboard updated",
+    error: "Result could not be saved",
+    offline: "Offline game · result not submitted",
+  }[resultStatus];
 
   return (
     <main className="game-shell" ref={frameRef}>
@@ -798,6 +889,10 @@ export function App() {
         <div className="topbar-status">
           <span>POLAR FIELD</span><b>{hud.mode === "playing" ? "TRACKING" : hud.mode.toUpperCase()}</b>
           <span className="difficulty-chip">{DIFFICULTIES[hud.difficulty]?.label ?? "Normal"}</span>
+          <div className="player-tools">
+            {profile.player && <button className="player-callsign" type="button" onClick={() => setNameDialogOpen(true)}>{profile.player.name}</button>}
+            <button className="leaderboard-trigger" type="button" onClick={() => setLeaderboardOpen(true)}>Leaderboard</button>
+          </div>
         </div>
       </header>
 
@@ -849,7 +944,7 @@ export function App() {
                 type="button"
                 aria-label="Nudge inward. Hold to repeat."
                 disabled={hud.mode !== "playing"}
-                onPointerDown={(event) => beginMobileControl(event, "down", { delay: 115, interval: 54 })}
+                onPointerDown={(event) => beginMobileControl(event, "down", { delay: 240, interval: 96 })}
                 onPointerUp={endMobileControl}
                 onPointerCancel={endMobileControl}
                 onLostPointerCapture={endMobileControl}
@@ -907,6 +1002,7 @@ export function App() {
                     <small className="desktop-start-hint">Choose a speed · Drag the field or use the control dock</small>
                     <small className="mobile-start-hint">Drag the circle or use bottom arrows · Pull spin ↙ / ↗ · Hold nudge</small>
                   </>}
+                  {hud.mode === "gameover" && resultStatusCopy && <small className={`result-status is-${resultStatus}`}>{resultStatusCopy}</small>}
                 </div>
               </div>
             )}
@@ -962,6 +1058,22 @@ export function App() {
         <p>Close every angular segment to collapse a ring.</p>
         <span className="footer-credit">2026 | Created and delivered by <a href="https://github.com/kstroevsky" target="_blank" rel="noreferrer">kstroevsky</a></span>
       </footer>
+
+      <PlayerNameDialog
+        open={nameDialogOpen}
+        initialName={profile.player?.name ?? ""}
+        required={profile.status === "needs-name"}
+        onSave={savePlayerName}
+        onCancel={() => setNameDialogOpen(false)}
+        onPlayOffline={continueOffline}
+      />
+      <Leaderboard
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        playerName={profile.player?.name}
+        onEditName={editPlayerName}
+        refreshKey={leaderboardRefreshKey}
+      />
     </main>
   );
 }

@@ -409,6 +409,132 @@ kbd { color: #57757a; font: inherit; }
 .footer-credit a, .mobile-footer-credit a { color: #7eaeb5; text-decoration-color: rgba(126, 174, 181, 0.42); text-underline-offset: 3px; }
 .footer-credit a:hover, .footer-credit a:focus-visible, .mobile-footer-credit a:hover, .mobile-footer-credit a:focus-visible { color: var(--cyan); outline: none; }
 
+.player-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-tools button, .dialog-close, .secondary-button, .offline-button, .leaderboard-tabs button, .player-edit-button {
+  border: 1px solid rgba(82, 171, 182, 0.4);
+  color: #a9c7cb;
+  background: rgba(4, 16, 18, 0.92);
+  cursor: pointer;
+  font: 700 8px/1 ui-monospace, monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.player-tools button:hover, .player-tools button:focus-visible,
+.dialog-close:hover, .dialog-close:focus-visible,
+.secondary-button:hover, .secondary-button:focus-visible,
+.offline-button:hover, .offline-button:focus-visible,
+.leaderboard-tabs button:hover, .leaderboard-tabs button:focus-visible,
+.player-edit-button:hover, .player-edit-button:focus-visible {
+  color: #efffb1;
+  border-color: var(--lime);
+  outline: none;
+}
+
+.player-callsign { max-width: 150px; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-trigger { padding: 8px 11px; color: var(--lime) !important; border-color: rgba(215, 243, 74, 0.45) !important; }
+
+.leaderboard-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 4, 5, 0.82);
+  backdrop-filter: blur(7px);
+}
+
+.leaderboard-card, .player-dialog-card {
+  width: min(860px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(95, 180, 190, 0.48);
+  color: var(--ink);
+  background: rgba(2, 9, 11, 0.98);
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.72);
+}
+
+.leaderboard-card { padding: clamp(20px, 3.5vw, 38px); }
+.player-dialog-card { width: min(440px, 100%); padding: clamp(24px, 4vw, 38px); }
+
+.leaderboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.leaderboard-header h2, .player-dialog-card h2 {
+  margin: 8px 0 0;
+  color: #effcfc;
+  font: 400 clamp(30px, 5vw, 50px)/1 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.035em;
+}
+
+.dialog-close { padding: 10px 12px; }
+
+.leaderboard-toolbar {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.leaderboard-tabs { display: flex; gap: 6px; }
+.leaderboard-tabs button { padding: 10px 12px; }
+.leaderboard-tabs button.is-active { color: #081004; border-color: var(--lime); background: var(--lime); }
+.player-edit-button { max-width: 190px; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.leaderboard-table-wrap { min-height: 260px; overflow-x: auto; border: 1px solid rgba(75, 157, 171, 0.24); }
+.leaderboard-table { width: 100%; min-width: 630px; border-collapse: collapse; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.leaderboard-table th, .leaderboard-table td { padding: 13px 14px; border-bottom: 1px solid rgba(75, 157, 171, 0.19); text-align: right; font-size: 10px; }
+.leaderboard-table thead th { color: #58777c; background: rgba(7, 23, 26, 0.82); font-size: 8px; letter-spacing: 0.11em; text-transform: uppercase; }
+.leaderboard-table th:nth-child(2), .leaderboard-table td:nth-child(2) { text-align: left; }
+.leaderboard-table tbody td:first-child { color: #56757b; }
+.leaderboard-table tbody th { max-width: 240px; overflow: hidden; color: #d9edef; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-table tbody td:nth-child(3) { color: var(--lime); }
+.leaderboard-table tbody tr:last-child th, .leaderboard-table tbody tr:last-child td { border-bottom: 0; }
+.leaderboard-empty { margin: 0; padding: 64px 20px; color: #68868b; text-align: center; font: 9px/1.6 ui-monospace, monospace; letter-spacing: 0.07em; text-transform: uppercase; }
+.leaderboard-note { margin: 16px 0 0; color: #506d72; font: 8px/1.5 ui-monospace, monospace; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.player-dialog-card > p {
+  margin: 15px 0 22px;
+  color: #86a0a4;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.player-dialog-card form { display: grid; gap: 10px; }
+.player-dialog-card label { color: #6f8c91; font: 700 8px/1 ui-monospace, monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+.player-dialog-card input {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid rgba(82, 171, 182, 0.48);
+  border-radius: 0;
+  outline: none;
+  color: #effcfc;
+  background: #030d0f;
+  padding: 0 14px;
+  font: 500 15px/1 ui-monospace, monospace;
+}
+.player-dialog-card input:focus { border-color: var(--lime); box-shadow: inset 0 0 0 1px rgba(215, 243, 74, 0.22); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.dialog-actions .primary-button { min-width: 160px; }
+.secondary-button { min-width: 100px; padding: 14px 16px; }
+.offline-button { justify-self: center; padding: 9px 12px; border-color: transparent; color: #65858a; background: transparent; }
+.dialog-error { color: #ff8293 !important; }
+.result-status.is-saved { color: var(--lime); }
+.result-status.is-error, .result-status.is-offline { color: #ff8293; }
+
 @media (max-width: 980px) {
   .game-layout { grid-template-columns: minmax(140px, 180px) minmax(380px, 1fr); }
   .systems-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 0.7fr 1fr 1fr; gap: 24px; align-items: start; }
@@ -685,8 +811,21 @@ kbd { color: #57757a; font: inherit; }
     letter-spacing: 0.1em;
     text-transform: uppercase;
     touch-action: manipulation;
+    pointer-events: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
-  .mobile-system-controls button span { color: var(--cyan); font: 400 18px/0.8 Georgia, serif; vertical-align: -1px; margin-right: 5px; }
+  .mobile-system-controls button span { 
+    color: var(--cyan); 
+    font: 400 18px/0.8 Georgia, serif; 
+    vertical-align: -1px; 
+    margin-right: 5px; 
+    pointer-events: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   .mobile-system-controls button:active { color: #efffb1; border-color: var(--lime); background: #101a0b; transform: translateY(1px); }
   .mobile-system-controls button:disabled { color: #4b666b; border-color: rgba(75, 157, 171, 0.2); }
   .mobile-system-controls.is-obscured { visibility: hidden; }
@@ -824,4 +963,30 @@ kbd { color: #57757a; font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}
+
+@media (max-width: 700px) {
+  .topbar-status { gap: 7px; }
+  .player-callsign { display: none; }
+  .leaderboard-trigger { padding: 7px 8px; font-size: 7px; }
+  .leaderboard-backdrop { padding: 9px; }
+  .leaderboard-card, .player-dialog-card { max-height: calc(100dvh - 18px); }
+  .leaderboard-card { padding: 17px 14px; }
+  .player-dialog-card { padding: 24px 20px; }
+  .leaderboard-header { padding-bottom: 15px; }
+  .leaderboard-header h2, .player-dialog-card h2 { font-size: 32px; }
+  .leaderboard-toolbar { align-items: stretch; flex-direction: column; padding: 12px 0; }
+  .leaderboard-tabs { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .leaderboard-tabs button { padding: 10px 7px; font-size: 7px; }
+  .player-edit-button { max-width: 100%; }
+  .leaderboard-table-wrap { min-height: 230px; overflow-x: hidden; }
+  .leaderboard-table { min-width: 100%; table-layout: fixed; }
+  .leaderboard-table th, .leaderboard-table td { padding: 12px 4px; font-size: 8px; }
+  .leaderboard-table th:first-child, .leaderboard-table td:first-child { width: 30px; }
+  .leaderboard-table th:nth-child(3), .leaderboard-table td:nth-child(3) { width: 38px; }
+  .leaderboard-table th:nth-child(4), .leaderboard-table td:nth-child(4) { width: 52px; }
+  .leaderboard-table th:nth-child(5), .leaderboard-table td:nth-child(5) { width: 44px; }
+  .leaderboard-table th:nth-child(6), .leaderboard-table td:nth-child(6) { width: 42px; }
+  .dialog-actions { align-items: stretch; flex-direction: column-reverse; }
+  .dialog-actions .primary-button, .secondary-button { width: 100%; min-width: 0; }
 }

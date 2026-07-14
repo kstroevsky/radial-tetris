@@ -1,3 +1,5 @@
 dist
 node_modules
 .codegraph
+.wrangler
+wrangler.local.jsonc
