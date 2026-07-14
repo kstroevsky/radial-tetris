@@ -462,7 +462,7 @@ kbd { color: #57757a; font: inherit; }
     position: absolute;
     z-index: 1;
     left: calc(50% + 4px);
-    bottom: 22px;
+    bottom: 16px;
     width: calc(100% - 80px);
     height: 27px;
     display: grid;
@@ -622,6 +622,7 @@ kbd { color: #57757a; font: inherit; }
     display: grid;
     place-items: center;
     font: 400 18px/1 ui-sans-serif, system-ui, sans-serif;
+    transform: rotate(-45deg);
     transition: color 90ms ease, border-color 90ms ease, background 90ms ease, box-shadow 90ms ease;
   }
   .mobile-polar-icon {
