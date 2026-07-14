@@ -32,10 +32,34 @@ import {
 } from "./resultOutbox.js";
 
 const TAU = Math.PI * 2;
-const MOBILE_DIAGONAL_PULL_AXIS = Object.freeze({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
 const staticLayers = new WeakMap();
 const renderMetrics = new WeakMap();
 const BEST_SCORE_KEY = "radial-tetris-best-score";
+const MOBILE_GESTURE_GUIDE_KEY = "radial-tetris-mobile-gesture-guide-v1";
+const MOBILE_GESTURE_QUERY = "(max-width: 700px)";
+const MOBILE_GESTURE_STEP_PX = 22;
+const MOBILE_GESTURE_SLOP_PX = 12;
+const MOBILE_GESTURE_RESOLVE_PX = 24;
+const MOBILE_GESTURE_DOMINANCE = 1.25;
+const MOBILE_TAP_SLOP_PX = 10;
+const MOBILE_TAP_MAX_MS = 260;
+const MOBILE_FLICK_CANDIDATE_PX = 24;
+const MOBILE_FLICK_CANDIDATE_MS = 110;
+const MOBILE_FLICK_MIN_PX = 48;
+const MOBILE_FLICK_MAX_MS = 180;
+const MOBILE_FLICK_MIN_VELOCITY = 0.45;
+const MOBILE_GUIDE_HELP_MS = 15_000;
+
+function isMobileGestureViewport() {
+  return window.matchMedia?.(MOBILE_GESTURE_QUERY).matches ?? window.innerWidth <= 700;
+}
+
+function shortestAngleDelta(next, previous) {
+  let delta = next - previous;
+  if (delta > Math.PI) delta -= TAU;
+  if (delta < -Math.PI) delta += TAU;
+  return delta;
+}
 
 function compactNumber(value) {
   return String(Math.max(0, value)).padStart(7, "0");
@@ -353,11 +377,16 @@ export function App() {
   const pointerRef = useRef({ active: false, sector: null });
   const pendingPointerSectorRef = useRef(null);
   const orbitFrameRef = useRef(0);
-  const mobileRepeatsRef = useRef(new Map());
-  const mobileRepeatStatesRef = useRef(new Set());
-  const mobilePullsRef = useRef(new Map());
+  const mobileGestureRef = useRef(null);
+  const mobileGestureFrameRef = useRef(0);
+  const pendingMobilePointRef = useRef(null);
   const clearMobileInputsRef = useRef(() => {});
   const refreshGameLoopRef = useRef(() => {});
+  const gestureGuideRef = useRef({ open: false, source: null, resumeOnClose: false });
+  const gestureGuideSeenRef = useRef(false);
+  const gestureGuideTimerRef = useRef({ id: 0, remaining: MOBILE_GUIDE_HELP_MS, startedAt: 0 });
+  const dismissGestureGuideRef = useRef(() => {});
+  const gestureGuideDialogRef = useRef(null);
   const previousModeRef = useRef("ready");
   const finalizedGameIdsRef = useRef(new Set());
   if (!gameRef.current) {
@@ -378,6 +407,16 @@ export function App() {
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [leaderboardRefreshKey, setLeaderboardRefreshKey] = useState(0);
   const [resultStatus, setResultStatus] = useState("idle");
+  const [gestureGuide, setGestureGuide] = useState({ open: false, source: null });
+  const [gestureGuideSeen, setGestureGuideSeen] = useState(() => {
+    try {
+      const seen = window.localStorage.getItem(MOBILE_GESTURE_GUIDE_KEY) === "seen";
+      gestureGuideSeenRef.current = seen;
+      return seen;
+    } catch {
+      return false;
+    }
+  });
 
   const syncHud = useCallback((updateIntegrity = true) => {
     const game = gameRef.current;
@@ -486,6 +525,7 @@ export function App() {
       setResultStatus("idle");
       changed = true;
     }
+    if (game.active !== activeBefore) clearMobileInputsRef.current();
     if (game.active !== activeBefore || game.mode !== modeBefore) changed = true;
     if (changed) {
       syncHud(action === "restart" || game.active !== activeBefore);
@@ -494,184 +534,404 @@ export function App() {
     }
   }, [finalizeGame, redraw, syncHud]);
 
-  const clearMobileRepeatState = useCallback((repeat) => {
-    if (!repeat || repeat.stopped) return;
-    repeat.stopped = true;
-    window.clearTimeout(repeat.timerId);
-    repeat.target?.removeAttribute("data-pressed");
+  const clearMobileGesture = useCallback((pointerId) => {
+    const gesture = mobileGestureRef.current;
+    if (!gesture || (pointerId != null && gesture.pointerId !== pointerId)) return false;
+    gesture.stopped = true;
+    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
+    if (mobileGestureFrameRef.current) cancelAnimationFrame(mobileGestureFrameRef.current);
+    mobileGestureFrameRef.current = 0;
+    pendingMobilePointRef.current = null;
+    mobileGestureRef.current = null;
     try {
-      if (repeat.target?.hasPointerCapture?.(repeat.pointerId)) {
-        repeat.target.releasePointerCapture(repeat.pointerId);
+      if (gesture.target?.hasPointerCapture?.(gesture.pointerId)) {
+        gesture.target.releasePointerCapture(gesture.pointerId);
       }
     } catch {
-      // Pointer capture may already have been released by the browser.
+      // Capture may be unavailable or already released by the browser.
     }
-    if (mobileRepeatsRef.current.get(repeat.pointerId) === repeat) {
-      mobileRepeatsRef.current.delete(repeat.pointerId);
-    }
-    mobileRepeatStatesRef.current.delete(repeat);
+    return true;
   }, []);
-
-  const clearMobileRepeat = useCallback((pointerId) => {
-    clearMobileRepeatState(mobileRepeatsRef.current.get(pointerId));
-  }, [clearMobileRepeatState]);
-
-  const clearAllMobileRepeats = useCallback(() => {
-    for (const repeat of [...mobileRepeatStatesRef.current]) clearMobileRepeatState(repeat);
-  }, [clearMobileRepeatState]);
-
-  const beginMobileControl = useCallback((event, action, repeat) => {
-    if (gameRef.current.mode !== "playing") return;
-    event.preventDefault();
-    const target = event.currentTarget;
-    const activeAtPress = gameRef.current.active;
-    clearMobileRepeat(event.pointerId);
-    try {
-      target.setPointerCapture?.(event.pointerId);
-    } catch {
-      // Synthetic events and a few embedded browsers do not expose an active pointer to capture.
-    }
-    target.dataset.pressed = "true";
-    act(action);
-    if (navigator.vibrate) navigator.vibrate(action === "drop" ? 14 : 6);
-    if (!repeat || gameRef.current.active !== activeAtPress) return;
-
-    const state = { pointerId: event.pointerId, target, active: activeAtPress, timerId: 0, stopped: false };
-    const tick = () => {
-      if (state.stopped) return;
-      if (gameRef.current.mode !== "playing" || gameRef.current.active !== state.active) {
-        clearMobileRepeatState(state);
-        return;
-      }
-      act(action);
-      if (state.stopped || gameRef.current.mode !== "playing" || gameRef.current.active !== state.active) {
-        clearMobileRepeatState(state);
-        return;
-      }
-      state.timerId = window.setTimeout(tick, repeat.interval);
-    };
-    mobileRepeatsRef.current.set(event.pointerId, state);
-    mobileRepeatStatesRef.current.add(state);
-    state.timerId = window.setTimeout(tick, repeat.delay);
-  }, [act, clearMobileRepeat, clearMobileRepeatState]);
-
-  const endMobileControl = useCallback((event) => {
-    event.currentTarget?.removeAttribute("data-pressed");
-    clearMobileRepeat(event.pointerId);
-  }, [clearMobileRepeat]);
-
-  const clearMobilePull = useCallback((pointerId) => {
-    const pull = mobilePullsRef.current.get(pointerId);
-    if (!pull) return;
-    pull.target?.removeAttribute("data-pressed");
-    pull.target?.removeAttribute("data-pressed-pole");
-    pull.target?.removeAttribute("data-pull-direction");
-    pull.target?.style.removeProperty("--pull-offset");
-    mobilePullsRef.current.delete(pointerId);
-  }, []);
-
-  const clearAllMobilePulls = useCallback(() => {
-    for (const pointerId of mobilePullsRef.current.keys()) clearMobilePull(pointerId);
-  }, [clearMobilePull]);
 
   const clearMobileInputs = useCallback(() => {
-    clearAllMobileRepeats();
-    clearAllMobilePulls();
-  }, [clearAllMobilePulls, clearAllMobileRepeats]);
+    clearMobileGesture();
+  }, [clearMobileGesture]);
 
   clearMobileInputsRef.current = clearMobileInputs;
 
-  const beginMobilePull = useCallback((event, downAction, upAction, axis = { x: 0, y: 1 }) => {
-    if (gameRef.current.mode !== "playing") return;
+  const applyMobileOrbitSteps = useCallback((gesture) => {
+    const steps = Math.min(4, Math.floor(Math.abs(gesture.orbitAccumulator) / MOBILE_GESTURE_STEP_PX));
+    if (!steps) return false;
+    const direction = Math.sign(gesture.orbitAccumulator);
+    let moved = false;
+    for (let step = 0; step < steps; step += 1) {
+      moved = moveAround(gameRef.current, direction) || moved;
+    }
+    gesture.orbitAccumulator -= direction * steps * MOBILE_GESTURE_STEP_PX;
+    if (moved) {
+      syncHud(false);
+      redraw();
+      if (navigator.vibrate) navigator.vibrate(5);
+    }
+    return moved;
+  }, [redraw, syncHud]);
+
+  const applyMobileSoftSteps = useCallback((gesture) => {
+    const available = gesture.inwardDistance - gesture.softAppliedDistance;
+    const steps = Math.min(4, Math.floor(available / MOBILE_GESTURE_STEP_PX));
+    if (!steps) return false;
+    const activeBefore = gameRef.current.active;
+    let attempted = 0;
+    let changed = false;
+    while (attempted < steps && gameRef.current.mode === "playing" && gameRef.current.active === gesture.active) {
+      const pieceBefore = gameRef.current.active;
+      const moved = stepInward(gameRef.current, true);
+      attempted += 1;
+      changed = moved || gameRef.current.active !== pieceBefore || changed;
+      if (gameRef.current.active !== gesture.active) break;
+    }
+    gesture.softAppliedDistance += attempted * MOBILE_GESTURE_STEP_PX;
+    if (changed) {
+      syncHud(gameRef.current.active !== activeBefore);
+      redraw();
+      refreshGameLoopRef.current();
+      if (navigator.vibrate) navigator.vibrate(5);
+    }
+    if (gameRef.current.active !== gesture.active) clearMobileGesture(gesture.pointerId);
+    return changed;
+  }, [clearMobileGesture, redraw, syncHud]);
+
+  const commitMobileSoftDrop = useCallback((gesture) => {
+    if (!gesture || gesture.stopped || mobileGestureRef.current !== gesture) return;
+    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
+    gesture.commitTimerId = 0;
+    gesture.flickCandidate = false;
+    gesture.softCommitted = true;
+    applyMobileSoftSteps(gesture);
+  }, [applyMobileSoftSteps]);
+
+  const armMobileGestureCommit = useCallback((gesture, deadlineMs) => {
+    if (gesture.commitTimerId) window.clearTimeout(gesture.commitTimerId);
+    const elapsed = performance.now() - gesture.startTime;
+    const remaining = Math.max(0, deadlineMs - elapsed);
+    if (!remaining) {
+      commitMobileSoftDrop(gesture);
+      return;
+    }
+    gesture.commitTimerId = window.setTimeout(() => commitMobileSoftDrop(gesture), remaining);
+  }, [commitMobileSoftDrop]);
+
+  const processMobileGesturePoint = useCallback((gesture, point) => {
+    if (!gesture || gesture.stopped || mobileGestureRef.current !== gesture) return;
+    if (gameRef.current.mode !== "playing" || gameRef.current.active !== gesture.active) {
+      clearMobileGesture(gesture.pointerId);
+      return;
+    }
+
+    const x = point.clientX - gesture.centerX;
+    const y = point.clientY - gesture.centerY;
+    const radius = Math.hypot(x, y);
+    const angle = Math.atan2(y, x);
+    const segmentArc = shortestAngleDelta(angle, gesture.lastAngle)
+      * Math.max(40, (radius + gesture.lastRadius) / 2);
+    gesture.lastAngle = angle;
+    gesture.lastRadius = radius;
+    gesture.lastX = point.clientX;
+    gesture.lastY = point.clientY;
+    gesture.totalTangential += segmentArc;
+    gesture.orbitAccumulator += segmentArc;
+    gesture.inwardDistance = Math.max(0, gesture.startRadius - radius);
+    gesture.outwardDistance = Math.max(0, radius - gesture.startRadius);
+    gesture.travelDistance = Math.hypot(point.clientX - gesture.startX, point.clientY - gesture.startY);
+    gesture.lastPointTime = point.time;
+
+    const tangential = Math.abs(gesture.totalTangential);
+    const inward = gesture.inwardDistance;
+    if (gesture.intent === "pending" && gesture.travelDistance >= MOBILE_GESTURE_SLOP_PX) {
+      if (gesture.outwardDistance >= MOBILE_GESTURE_SLOP_PX
+        && gesture.outwardDistance >= tangential * MOBILE_GESTURE_DOMINANCE) {
+        gesture.intent = "ignored";
+      } else if (tangential >= MOBILE_GESTURE_SLOP_PX
+        && tangential >= inward * MOBILE_GESTURE_DOMINANCE) {
+        gesture.intent = "orbit";
+      } else if (inward >= MOBILE_GESTURE_SLOP_PX
+        && inward >= tangential * MOBILE_GESTURE_DOMINANCE) {
+        gesture.intent = "inward";
+      } else if (gesture.travelDistance >= MOBILE_GESTURE_RESOLVE_PX) {
+        gesture.intent = inward > tangential ? "inward" : tangential > inward ? "orbit" : "ignored";
+      }
+    }
+
+    if (gesture.intent === "orbit") {
+      applyMobileOrbitSteps(gesture);
+      return;
+    }
+    if (gesture.intent !== "inward") return;
+
+    const elapsed = Math.max(1, point.time - gesture.startTime);
+    const inwardVelocity = inward / elapsed;
+    if (!gesture.softCommitted) {
+      if (inward >= MOBILE_FLICK_CANDIDATE_PX
+        && elapsed <= MOBILE_FLICK_CANDIDATE_MS
+        && inwardVelocity >= MOBILE_FLICK_MIN_VELOCITY) {
+        gesture.flickCandidate = true;
+        armMobileGestureCommit(gesture, MOBILE_FLICK_MAX_MS);
+      } else if (elapsed >= MOBILE_FLICK_CANDIDATE_MS
+        || (inward >= MOBILE_GESTURE_STEP_PX && inwardVelocity < MOBILE_FLICK_MIN_VELOCITY)) {
+        commitMobileSoftDrop(gesture);
+      } else {
+        armMobileGestureCommit(gesture, MOBILE_FLICK_CANDIDATE_MS);
+      }
+    }
+    if (gesture.softCommitted) applyMobileSoftSteps(gesture);
+  }, [applyMobileOrbitSteps, applyMobileSoftSteps, armMobileGestureCommit, clearMobileGesture, commitMobileSoftDrop]);
+
+  const flushMobileGestureFrame = useCallback(function flushMobileGestureFrame() {
+    mobileGestureFrameRef.current = 0;
+    const gesture = mobileGestureRef.current;
+    if (!gesture || gesture.stopped) return;
+
+    const point = pendingMobilePointRef.current;
+    pendingMobilePointRef.current = null;
+    if (point) processMobileGesturePoint(gesture, point);
+    if (mobileGestureRef.current !== gesture || gesture.stopped) return;
+
+    if (!point && gesture.intent === "orbit") applyMobileOrbitSteps(gesture);
+    if (!point && gesture.intent === "inward" && gesture.softCommitted) applyMobileSoftSteps(gesture);
+    if (mobileGestureRef.current !== gesture || gesture.stopped) return;
+
+    const hasOrbitBacklog = gesture.intent === "orbit"
+      && Math.abs(gesture.orbitAccumulator) >= MOBILE_GESTURE_STEP_PX;
+    const hasSoftDropBacklog = gesture.intent === "inward"
+      && gesture.softCommitted
+      && gesture.inwardDistance - gesture.softAppliedDistance >= MOBILE_GESTURE_STEP_PX;
+    if (pendingMobilePointRef.current || hasOrbitBacklog || hasSoftDropBacklog) {
+      mobileGestureFrameRef.current = requestAnimationFrame(flushMobileGestureFrame);
+    } else if (gesture.released) {
+      clearMobileGesture(gesture.pointerId);
+    }
+  }, [applyMobileOrbitSteps, applyMobileSoftSteps, clearMobileGesture, processMobileGesturePoint]);
+
+  const beginMobileGesture = useCallback((event) => {
+    if (gameRef.current.mode !== "playing" || gestureGuideRef.current.open) return;
     event.preventDefault();
+    const existing = mobileGestureRef.current;
+    if (existing && existing.pointerId !== event.pointerId) return;
+    if (existing) clearMobileGesture(existing.pointerId);
     const target = event.currentTarget;
-    clearMobilePull(event.pointerId);
     try {
       target.setPointerCapture?.(event.pointerId);
     } catch {
-      // Synthetic events and a few embedded browsers do not expose an active pointer to capture.
+      // Global pointer-end listeners provide the fallback when capture is unavailable.
     }
-    target.dataset.pressed = "true";
-    target.dataset.pullDirection = "neutral";
-    target.style.setProperty("--pull-offset", "0px");
-    const poleTarget = event.target?.closest?.("[data-spin-pole-action]");
-    const tapAction = poleTarget?.dataset.spinPoleAction ?? null;
-    if (tapAction) target.dataset.pressedPole = tapAction === "rotate" ? "down" : "up";
-    mobilePullsRef.current.set(event.pointerId, {
+    const rect = target.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const x = event.clientX - centerX;
+    const y = event.clientY - centerY;
+    const now = performance.now();
+    mobileGestureRef.current = {
+      pointerId: event.pointerId,
       target,
-      downAction,
-      upAction,
-      tapAction,
-      hasPulled: false,
-      axis,
+      active: gameRef.current.active,
+      stopped: false,
+      startTime: now,
+      lastPointTime: now,
+      centerX,
+      centerY,
+      startX: event.clientX,
+      startY: event.clientY,
       lastX: event.clientX,
       lastY: event.clientY,
-      originX: event.clientX,
-      originY: event.clientY,
-    });
-  }, [clearMobilePull]);
+      startRadius: Math.hypot(x, y),
+      lastRadius: Math.hypot(x, y),
+      lastAngle: Math.atan2(y, x),
+      intent: "pending",
+      totalTangential: 0,
+      orbitAccumulator: 0,
+      inwardDistance: 0,
+      outwardDistance: 0,
+      travelDistance: 0,
+      softAppliedDistance: 0,
+      softCommitted: false,
+      flickCandidate: false,
+      commitTimerId: 0,
+      released: false,
+    };
+  }, [clearMobileGesture]);
 
-  const moveMobilePull = useCallback((event) => {
-    const pull = mobilePullsRef.current.get(event.pointerId);
-    if (!pull || gameRef.current.mode !== "playing") return;
+  const moveMobileGesture = useCallback((event) => {
+    const gesture = mobileGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
-    const offset = Math.max(-28, Math.min(28,
-      (event.clientX - pull.originX) * pull.axis.x + (event.clientY - pull.originY) * pull.axis.y,
-    ));
-    pull.target.style.setProperty("--pull-offset", `${offset}px`);
-    if (Math.abs(offset) >= 4) pull.target.dataset.pullDirection = offset > 0 ? "down" : "up";
-    const distance = (event.clientX - pull.lastX) * pull.axis.x + (event.clientY - pull.lastY) * pull.axis.y;
-    const stepSize = 22;
-    const steps = Math.min(4, Math.floor(Math.abs(distance) / stepSize));
-    if (!steps) return;
-    const direction = Math.sign(distance);
-    const action = direction > 0 ? pull.downAction : pull.upAction;
-    for (let step = 0; step < steps; step += 1) act(action);
-    pull.hasPulled = true;
-    pull.lastX += pull.axis.x * direction * steps * stepSize;
-    pull.lastY += pull.axis.y * direction * steps * stepSize;
-    pull.target.dataset.pullDirection = direction > 0 ? "down" : "up";
-    if (navigator.vibrate) navigator.vibrate(5);
-  }, [act]);
+    pendingMobilePointRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      time: performance.now(),
+    };
+    if (mobileGestureFrameRef.current) return;
+    mobileGestureFrameRef.current = requestAnimationFrame(flushMobileGestureFrame);
+  }, [flushMobileGestureFrame]);
 
-  const endMobilePull = useCallback((event) => {
-    clearMobilePull(event.pointerId);
-  }, [clearMobilePull]);
+  const finishMobileGesture = useCallback((event) => {
+    const gesture = mobileGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault?.();
+    if (mobileGestureFrameRef.current) cancelAnimationFrame(mobileGestureFrameRef.current);
+    mobileGestureFrameRef.current = 0;
+    pendingMobilePointRef.current = null;
+    const point = { clientX: event.clientX, clientY: event.clientY, time: performance.now() };
+    processMobileGesturePoint(gesture, point);
+    if (mobileGestureRef.current !== gesture || gesture.stopped) return;
 
-  const finishMobilePull = useCallback((event) => {
-    moveMobilePull(event);
-    const pull = mobilePullsRef.current.get(event.pointerId);
-    if (pull?.tapAction && !pull.hasPulled && gameRef.current.mode === "playing") {
-      act(pull.tapAction);
+    const elapsed = Math.max(1, point.time - gesture.startTime);
+    if (gesture.intent === "pending"
+      && gesture.travelDistance <= MOBILE_TAP_SLOP_PX
+      && elapsed <= MOBILE_TAP_MAX_MS) {
+      act("rotate");
       if (navigator.vibrate) navigator.vibrate(6);
+    } else if (gesture.intent === "inward" && !gesture.softCommitted) {
+      const inwardVelocity = gesture.inwardDistance / elapsed;
+      const isHardDrop = gesture.inwardDistance >= MOBILE_FLICK_MIN_PX
+        && elapsed <= MOBILE_FLICK_MAX_MS
+        && inwardVelocity >= MOBILE_FLICK_MIN_VELOCITY
+        && gesture.inwardDistance >= Math.abs(gesture.totalTangential) * MOBILE_GESTURE_DOMINANCE;
+      if (isHardDrop) {
+        act("drop");
+        if (navigator.vibrate) navigator.vibrate(14);
+      } else {
+        commitMobileSoftDrop(gesture);
+      }
     }
-    endMobilePull(event);
-  }, [act, endMobilePull, moveMobilePull]);
+    if (mobileGestureRef.current !== gesture || gesture.stopped) return;
+    gesture.released = true;
+    const hasOrbitBacklog = gesture.intent === "orbit"
+      && Math.abs(gesture.orbitAccumulator) >= MOBILE_GESTURE_STEP_PX;
+    const hasSoftDropBacklog = gesture.intent === "inward"
+      && gesture.softCommitted
+      && gesture.inwardDistance - gesture.softAppliedDistance >= MOBILE_GESTURE_STEP_PX;
+    if (hasOrbitBacklog || hasSoftDropBacklog) {
+      mobileGestureFrameRef.current = requestAnimationFrame(flushMobileGestureFrame);
+    } else {
+      clearMobileGesture(gesture.pointerId);
+    }
+  }, [act, clearMobileGesture, commitMobileSoftDrop, flushMobileGestureFrame, processMobileGesturePoint]);
+
+  const cancelMobileGesture = useCallback((event) => {
+    clearMobileGesture(event?.pointerId);
+  }, [clearMobileGesture]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible") clearMobileInputs();
     };
-    const onPointerEnd = (event) => {
-      clearMobileRepeat(event.pointerId);
-      clearMobilePull(event.pointerId);
-    };
     window.addEventListener("blur", clearMobileInputs);
-    window.addEventListener("pointerup", onPointerEnd);
-    window.addEventListener("pointercancel", onPointerEnd);
+    window.addEventListener("pointerup", finishMobileGesture);
+    window.addEventListener("pointercancel", cancelMobileGesture);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("blur", clearMobileInputs);
-      window.removeEventListener("pointerup", onPointerEnd);
-      window.removeEventListener("pointercancel", onPointerEnd);
+      window.removeEventListener("pointerup", finishMobileGesture);
+      window.removeEventListener("pointercancel", cancelMobileGesture);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearMobileInputs();
     };
-  }, [clearMobileInputs, clearMobilePull, clearMobileRepeat]);
+  }, [cancelMobileGesture, clearMobileInputs, finishMobileGesture]);
 
   useEffect(() => {
     if (hud.mode !== "playing") clearMobileInputs();
   }, [clearMobileInputs, hud.mode]);
+
+  const stopGestureGuideTimer = useCallback((preserveRemaining = false) => {
+    const timer = gestureGuideTimerRef.current;
+    if (timer.id) {
+      if (preserveRemaining && timer.startedAt) {
+        timer.remaining = Math.max(0, timer.remaining - (performance.now() - timer.startedAt));
+      }
+      window.clearTimeout(timer.id);
+    }
+    timer.id = 0;
+    timer.startedAt = 0;
+    if (!preserveRemaining) timer.remaining = MOBILE_GUIDE_HELP_MS;
+  }, []);
+
+  const scheduleGestureGuideTimer = useCallback(() => {
+    const guide = gestureGuideRef.current;
+    const timer = gestureGuideTimerRef.current;
+    if (!guide.open || guide.source !== "help" || document.visibilityState !== "visible" || timer.id) return;
+    if (timer.remaining <= 0) {
+      dismissGestureGuideRef.current();
+      return;
+    }
+    timer.startedAt = performance.now();
+    timer.id = window.setTimeout(() => {
+      timer.id = 0;
+      timer.startedAt = 0;
+      timer.remaining = 0;
+      dismissGestureGuideRef.current();
+    }, timer.remaining);
+  }, []);
+
+  const openGestureGuide = useCallback((source, resumeOnClose) => {
+    stopGestureGuideTimer(false);
+    const guide = { open: true, source, resumeOnClose };
+    gestureGuideRef.current = guide;
+    setGestureGuide({ open: true, source });
+    if (source === "help") scheduleGestureGuideTimer();
+  }, [scheduleGestureGuideTimer, stopGestureGuideTimer]);
+
+  const dismissGestureGuide = useCallback(() => {
+    const guide = gestureGuideRef.current;
+    if (!guide.open) return;
+    stopGestureGuideTimer(false);
+    gestureGuideRef.current = { open: false, source: null, resumeOnClose: false };
+    setGestureGuide({ open: false, source: null });
+    if (guide.source === "first") {
+      gestureGuideSeenRef.current = true;
+      setGestureGuideSeen(true);
+      try {
+        window.localStorage.setItem(MOBILE_GESTURE_GUIDE_KEY, "seen");
+      } catch {
+        // Keep the guide dismissed for this page session when storage is unavailable.
+      }
+    }
+    if (guide.resumeOnClose && gameRef.current.mode === "paused") {
+      pauseGame(gameRef.current);
+      syncHud();
+      redraw();
+      refreshGameLoopRef.current();
+    }
+    canvasRef.current?.focus();
+  }, [redraw, stopGestureGuideTimer, syncHud]);
+
+  dismissGestureGuideRef.current = dismissGestureGuide;
+
+  useEffect(() => {
+    if (!gestureGuide.open) return;
+    gestureGuideDialogRef.current?.focus();
+  }, [gestureGuide.open]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") scheduleGestureGuideTimer();
+      else stopGestureGuideTimer(true);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopGestureGuideTimer(false);
+    };
+  }, [scheduleGestureGuideTimer, stopGestureGuideTimer]);
+
+  const showGestureHelp = useCallback(() => {
+    if (!isMobileGestureViewport() || gestureGuideRef.current.open || gameRef.current.mode !== "playing") return;
+    clearMobileInputsRef.current();
+    pauseGame(gameRef.current);
+    syncHud();
+    redraw();
+    refreshGameLoopRef.current();
+    openGestureGuide("help", true);
+  }, [openGestureGuide, redraw, syncHud]);
 
   const start = useCallback((difficulty = "normal") => {
     if (profile.status === "loading") return;
@@ -681,17 +941,24 @@ export function App() {
     }
     clearMobileInputsRef.current();
     const gameIdBefore = gameRef.current.gameId;
+    const showFirstGestureGuide = gameRef.current.mode === "ready"
+      && isMobileGestureViewport()
+      && !gestureGuideSeenRef.current;
     if (gameRef.current.mode === "gameover") void finalizeGame(gameRef.current, "gameover");
     if (gameRef.current.mode === "ready") {
       setDifficulty(gameRef.current, typeof difficulty === "string" ? difficulty : "normal");
     }
     startGame(gameRef.current);
+    if (showFirstGestureGuide) {
+      pauseGame(gameRef.current);
+      openGestureGuide("first", true);
+    }
     if (gameRef.current.gameId !== gameIdBefore) setResultStatus("idle");
     syncHud();
     redraw();
     refreshGameLoopRef.current();
-    canvasRef.current?.focus();
-  }, [finalizeGame, profile.status, redraw, syncHud]);
+    if (!showFirstGestureGuide) canvasRef.current?.focus();
+  }, [finalizeGame, openGestureGuide, profile.status, redraw, syncHud]);
 
   const savePlayerName = useCallback(async (name) => {
     const { player } = await saveProfile(name);
@@ -798,6 +1065,7 @@ export function App() {
         message: game.message,
       };
       const sceneChanged = updateGame(game, delta);
+      if (game.active !== hudBefore.active) clearMobileInputsRef.current();
       if (sceneChanged) {
         drawScene(canvasRef.current, game);
         const hudChanged = (
@@ -818,9 +1086,14 @@ export function App() {
     };
 
     const onKeyDown = (event) => {
-      if (document.querySelector("[data-game-input-blocking='true']")) return;
       const key = event.key.toLowerCase();
       const gameKeys = ["arrowleft", "arrowright", "arrowup", "arrowdown", " ", "enter", "a", "d", "w", "s", "x", "z", "p", "r", "f", "escape"];
+      if (gestureGuideRef.current.open) {
+        if (gameKeys.includes(key)) event.preventDefault();
+        if (key === "escape") dismissGestureGuideRef.current();
+        return;
+      }
+      if (document.querySelector("[data-game-input-blocking='true']")) return;
       if (!gameKeys.includes(key)) return;
       event.preventDefault();
       if (key === "f") return toggleFullscreen();
@@ -925,6 +1198,35 @@ export function App() {
     if (target != null) applyPointerOrbit(target);
   }, [applyPointerOrbit]);
 
+  const beginBoardPointer = useCallback((event) => {
+    if (isMobileGestureViewport()) {
+      beginMobileGesture(event);
+      return;
+    }
+    pointerRef.current = { active: true, sector: null };
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Desktop dragging remains usable even when pointer capture is unavailable.
+    }
+    orbitToPointer(event);
+  }, [beginMobileGesture, orbitToPointer]);
+
+  const moveBoardPointer = useCallback((event) => {
+    if (mobileGestureRef.current) moveMobileGesture(event);
+    else if (pointerRef.current.active) orbitToPointer(event);
+  }, [moveMobileGesture, orbitToPointer]);
+
+  const finishBoardPointer = useCallback((event) => {
+    if (mobileGestureRef.current) finishMobileGesture(event);
+    else finishPointerOrbit();
+  }, [finishMobileGesture, finishPointerOrbit]);
+
+  const cancelBoardPointer = useCallback((event) => {
+    if (mobileGestureRef.current) cancelMobileGesture(event);
+    else finishPointerOrbit();
+  }, [cancelMobileGesture, finishPointerOrbit]);
+
   useEffect(() => () => {
     if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
   }, []);
@@ -978,75 +1280,53 @@ export function App() {
               ref={canvasRef}
               className="game-canvas"
               tabIndex="0"
-              aria-label="Circular Tetris board. Drag around the circle to orbit the active piece."
-              onPointerDown={(event) => { pointerRef.current = { active: true, sector: null }; event.currentTarget.setPointerCapture(event.pointerId); orbitToPointer(event); }}
-              onPointerMove={(event) => { if (pointerRef.current.active) orbitToPointer(event); }}
-              onPointerUp={finishPointerOrbit}
-              onPointerCancel={finishPointerOrbit}
+              aria-label="Circular Tetris board. On mobile, swipe along the ring to orbit, tap to rotate clockwise, drag inward to soft drop, or flick inward to hard drop."
+              onPointerDown={beginBoardPointer}
+              onPointerMove={moveBoardPointer}
+              onPointerUp={finishBoardPointer}
+              onPointerCancel={cancelBoardPointer}
+              onLostPointerCapture={cancelBoardPointer}
             />
             <div className="frame-label frame-label-bottom">16θ / 10r / CORE ORIGIN 0,0</div>
-            <nav className="mobile-controller" aria-label="Mobile game controls" onContextMenu={(event) => event.preventDefault()}>
+            {gestureGuideSeen && hud.mode === "playing" && !gestureGuide.open && (
               <button
-                id="mobile-spin-pull"
-                className="mobile-polar-control mobile-spin-pull"
+                id="mobile-gesture-help"
+                className="mobile-gesture-help"
                 type="button"
-                aria-label="Piece rotation control. Tap the top pole to rotate counterclockwise, the bottom pole to rotate clockwise, or pull down and right for clockwise and up and left for counterclockwise."
-                disabled={hud.mode !== "playing"}
-                onPointerDown={(event) => beginMobilePull(event, "rotate", "counterRotate", MOBILE_DIAGONAL_PULL_AXIS)}
-                onPointerMove={moveMobilePull}
-                onPointerUp={finishMobilePull}
-                onPointerCancel={endMobilePull}
-                onLostPointerCapture={endMobilePull}
+                aria-label="Show mobile gesture guide"
+                onClick={showGestureHelp}
               >
-                <span className="mobile-polar-visual">
-                  <span className="mobile-polar-end mobile-polar-up" data-spin-pole-action="counterRotate" aria-hidden="true"><span className="mobile-polar-end-hit-area" /><span className="mobile-polar-icon">↻</span></span>
-                  <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Spin</span></span></span>
-                  <span className="mobile-polar-end mobile-polar-down" data-spin-pole-action="rotate" aria-hidden="true"><span className="mobile-polar-end-hit-area" /><span className="mobile-polar-icon">↻</span></span>
-                </span>
+                <span className="mobile-gesture-help-mark" aria-hidden="true">?</span>
               </button>
-              <button
-                id="mobile-nudge"
-                className="mobile-polar-control mobile-nudge-control"
-                type="button"
-                aria-label="Nudge inward. Hold to repeat."
-                disabled={hud.mode !== "playing"}
-                onPointerDown={(event) => beginMobileControl(event, "down", { delay: 240, interval: 96 })}
-                onPointerUp={endMobileControl}
-                onPointerCancel={endMobileControl}
-                onLostPointerCapture={endMobileControl}
+            )}
+            {gestureGuide.open ? (
+              <div
+                id="mobile-gesture-guide"
+                className="gesture-guide-overlay"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="gesture-guide-title"
+                data-game-input-blocking="true"
+                tabIndex="-1"
+                ref={gestureGuideDialogRef}
+                onPointerDown={(event) => {
+                  if (event.target === event.currentTarget) dismissGestureGuide();
+                }}
               >
-                <span className="mobile-polar-visual">
-                  <span className="mobile-polar-core"><span className="mobile-polar-content"><span className="mobile-polar-label">Nudge</span></span></span>
-                  <span className="mobile-polar-end mobile-polar-down" aria-hidden="true"><span className="mobile-polar-end-hit-area" />↓</span>
-                </span>
-              </button>
-              <div className="mobile-orbit-rail" role="group" aria-label="Alternate orbit controls">
-                <span className="mobile-orbit-rail-shadow"/>
-                <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-left" aria-hidden="true" />
-                <span className="mobile-orbit-rail-glow mobile-orbit-rail-glow-right" aria-hidden="true" />
-                <button
-                  id="mobile-orbit-left"
-                  type="button"
-                  aria-label="Orbit counterclockwise. Hold to repeat."
-                  disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "left", { delay: 180, interval: 92 })}
-                  onPointerUp={endMobileControl}
-                  onPointerCancel={endMobileControl}
-                  onLostPointerCapture={endMobileControl}
-                ><span className="mobile-orbit-arrow" aria-hidden="true">‹</span></button>
-                <button
-                  id="mobile-orbit-right"
-                  type="button"
-                  aria-label="Orbit clockwise. Hold to repeat."
-                  disabled={hud.mode !== "playing"}
-                  onPointerDown={(event) => beginMobileControl(event, "right", { delay: 180, interval: 92 })}
-                  onPointerUp={endMobileControl}
-                  onPointerCancel={endMobileControl}
-                  onLostPointerCapture={endMobileControl}
-                ><span className="mobile-orbit-arrow" aria-hidden="true">›</span></button>
+                <section className="gesture-guide-card">
+                  <span className="eyebrow">Mobile field gestures</span>
+                  <h2 id="gesture-guide-title">Swipe the board</h2>
+                  <p>The whole polar field is your controller.</p>
+                  <div className="gesture-guide-list" aria-label="Mobile gesture controls">
+                    <div className="gesture-guide-row"><strong>Swipe arc</strong><span>Orbit</span></div>
+                    <div className="gesture-guide-row"><strong>Tap</strong><span>Rotate clockwise</span></div>
+                    <div className="gesture-guide-row"><strong>Swipe in</strong><span>Soft drop</span></div>
+                    <div className="gesture-guide-row is-hard-drop"><strong>Flick in</strong><span>Hard drop</span></div>
+                  </div>
+                  <small>{gestureGuide.source === "first" ? "Tap outside to start" : "Tap outside to return · closes after 15 seconds"}</small>
+                </section>
               </div>
-            </nav>
-            {isOverlayVisible && (
+            ) : isOverlayVisible && (
               <div className="game-overlay" role="dialog" aria-modal="true" aria-label={overlayCopy.title}>
                 <div className="overlay-card">
                   <span className="eyebrow">{overlayCopy.kicker}</span><h2>{overlayCopy.title}</h2><p>{overlayCopy.body}</p>
@@ -1068,7 +1348,6 @@ export function App() {
                   ) : <button id="start-button" className="primary-button" type="button" onClick={start}>{overlayCopy.cta}</button>}
                   {hud.mode === "ready" && <>
                     <small className="desktop-start-hint">Choose a speed · Drag the field or use the control dock</small>
-                    <small className="mobile-start-hint">Drag the circle or use bottom arrows · Pull spin ↙ / ↗ · Hold nudge</small>
                   </>}
                   {hud.mode === "gameover" && resultStatusCopy && <small className={`result-status is-${resultStatus}`}>{resultStatusCopy}</small>}
                 </div>

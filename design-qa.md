@@ -62,4 +62,21 @@ No actionable P0, P1, or P2 visual differences remain.
 
 - [P3] A future pass could add optional sound and persistent high scores; neither is required by the source or core radial-Tetris loop.
 
+## 2026-07-14 invisible mobile gestures QA
+
+- Source visual truth: `/var/folders/3v/x1mcnkjx34v_q3qbx98mhd_40000gn/T/TemporaryItems/NSIRD_screencaptureui_a4Y6un/Screenshot 2026-07-14 at 20.24.19.png`
+- Primary implementation comparison: `/Users/kstroevsky/Documents/radial-tetris/output/playwright/mobile-390x844-first-guide.png`
+- Compact-phone evidence: `/Users/kstroevsky/Documents/radial-tetris/output/playwright/mobile-320x568-first-guide.png`
+- Gameplay/help/pause/game-over evidence: matching `mobile-390x844-*` and `mobile-320x568-*` captures in `/Users/kstroevsky/Documents/radial-tetris/output/playwright/`
+- Regression evidence: `/Users/kstroevsky/Documents/radial-tetris/output/playwright/tablet-834x900-active.png` and `/Users/kstroevsky/Documents/radial-tetris/output/playwright/desktop-1440x1000-active.png`
+- Required client evidence: `/Users/kstroevsky/Documents/radial-tetris/output/web-game-client-final/shot-0.png` with matching `state-0.json`
+
+The source and 390 × 844 implementation were inspected together in one comparison pass. The implementation preserves the reference's dark scientific field, cyan hairlines, lime hard-drop emphasis, compact verb/action rows, serif headline, and board-as-controller message while adapting that instructional concept into the requested first-use modal. No normal-play sensor artwork remains.
+
+The first compact capture exposed one P2 fit defect: the `Tap outside to start` line was clipped at 320 × 568. A short-height-only guide rule reduced internal padding, title size, row height, and gaps. The follow-up capture shows the complete card and instruction without changing surrounding navigation, telemetry, footer, board frame, or system controls. No actionable P0, P1, or P2 visual differences remain.
+
+Interaction QA verifies clockwise-only tap rotation, two-way relative orbit, slow soft drop, fast single hard drop, ambiguous/outward rejection, four-command frame batching, piece-boundary cleanup, extra-finger rejection, failed capture, off-target release, reused pointers, blur, pause, restart, first-use persistence, inside-panel tap rejection, backdrop/Escape dismissal, foreground-visible help timing, and one-time resume. The old phone controller elements and stale hint are absent; the help target is accessible and at least 44px. Canvas `touch-action: none` and scrollable-root behavior remain intact.
+
+Visual inspection passed for ready, first-use guide, active gameplay, reopened help, pause, and game-over at 390 × 844 and 320 × 568. Tablet 834 × 900 and desktop 1440 × 1000 captures confirm their existing controller and layout paths are unchanged. Browser runs produced no console or page errors.
+
 final result: passed
